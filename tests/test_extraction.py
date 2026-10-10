@@ -131,3 +131,12 @@ def test_famille(extension, attendu):
 )
 def test_detecter_code(texte, attendu):
     assert detecter_code(texte) == attendu
+
+
+def test_resolution_ocr_plafonnee_pour_les_photos():
+    from ged.ocr import resolution_effective
+
+    # Page A4 (595 x 842 pt) : 300 dpi conservés
+    assert resolution_effective(595, 842, 300) == 300
+    # Photo 4000 x 3000 px vue à 72 dpi : page de 55 pouces, rendue à environ 4000 px de large
+    assert resolution_effective(4000, 3000, 300) == 72

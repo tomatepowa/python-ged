@@ -30,6 +30,21 @@ def test_seuil_et_poids_du_nom(tmp_path):
     assert t.proposer(r"Infra\Debug_VPN_v2.docx", "") == [Tag("logiciel", "VPN")]
 
 
+def test_prefixe_titre_ne_compte_que_dans_le_nom(tmp_path):
+    t = taxonomie(tmp_path, 'seuil = 1\n[type]\n"Procédure" = ["titre:procedure"]\n')
+    assert t.proposer("contrat.pdf", "procédure procédure procédure") == []
+    assert t.proposer(r"Infra\Procédure VPN.docx", "") == [Tag("type", "Procédure")]
+
+
+def test_densite_ecarte_les_longs_documents(tmp_path):
+    t = taxonomie(tmp_path, 'seuil = 2\ndensite_min = 0.5\n[logiciel]\n"VPN" = ["vpn"]\n')
+    court = "Connexion au vpn : lancer le client vpn puis saisir le code."
+    long = court + " lorem" * 10000
+    assert t.proposer("note.docx", court) == [Tag("logiciel", "VPN")]
+    # Deux mentions noyées dans 10 000 mots : pas de tag
+    assert t.proposer("note.docx", long) == []
+
+
 def test_taxonomie_absente(tmp_path):
     assert Taxonomie.charger(tmp_path / "absente.toml").proposer("x", "y") == []
 

@@ -2,6 +2,7 @@
 
 CREATE EXTENSION IF NOT EXISTS unaccent;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;   -- levenshtein(), pour la correction orthographique
 
 -- Configuration de recherche "français sans accents" :
 -- "procédure", "Procedure" et "procédures" donnent le même lexème.
@@ -33,7 +34,7 @@ CREATE TABLE IF NOT EXISTS document (
     taille          bigint NOT NULL,
     modifie_le      timestamptz NOT NULL,
     empreinte       text,
-    -- indexe | ocr_requis | non_supporte | erreur
+    -- indexe | ocr_requis | sans_texte (OCR sans texte lisible) | non_supporte | erreur
     statut          text NOT NULL,
     erreur          text,
     -- texte | conversion | ocr
@@ -78,3 +79,12 @@ CREATE TABLE IF NOT EXISTS document_tag (
 );
 
 CREATE INDEX IF NOT EXISTS document_tag_tag_idx ON document_tag (tag_id);
+
+-- Vocabulaire du corpus (mots sans accents, en minuscules), recalculé après chaque indexation.
+-- Sert à corriger les fautes de frappe ("promese" -> "promesse") et à repérer le bruit de l'OCR.
+CREATE TABLE IF NOT EXISTS vocabulaire (
+    mot     text PRIMARY KEY,
+    nb_docs int NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS vocabulaire_trgm_idx ON vocabulaire USING gin (mot gin_trgm_ops);

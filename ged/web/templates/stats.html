@@ -18,7 +18,7 @@
 <table>
   <thead><tr><th>Statut</th><th class="nombre">Documents</th></tr></thead>
   <tbody>
-  {% set libelles = {"indexe": "Texte indexé", "ocr_requis": "Scan en attente d'OCR", "non_supporte": "Format non lu", "erreur": "Erreur de lecture"} %}
+  {% set libelles = {"indexe": "Texte indexé", "ocr_requis": "Scan en attente d'OCR", "sans_texte": "Image sans texte lisible", "non_supporte": "Format non lu", "erreur": "Erreur de lecture"} %}
   {% for s in par_statut %}
     <tr><td>{{ libelles.get(s.statut, s.statut) }}</td><td class="nombre">{{ s.nb }}</td></tr>
   {% endfor %}

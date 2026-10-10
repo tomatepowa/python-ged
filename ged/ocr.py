@@ -6,13 +6,21 @@ seulement le fichier de langue (fra.traineddata) dans le dossier `tessdata`.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from ged.extraction import Resultat
-from ged.texte import detecter_code
+from ged.texte import detecter_code, normaliser
 
 # Grand côté maximal de l'image rendue pour l'OCR (une page A4 à 300 dpi fait 3508 px)
 PIXELS_MAX = 4000
+
+# Qualité minimale d'un texte OCR : part des mots d'au moins 4 lettres connus du vocabulaire
+# du corpus. Mesuré sur un corpus de test : photos sans texte <= 7 %, vrais scans >= 19 %.
+TAUX_MOTS_CONNUS_MIN = 0.12
+MOTS_CONNUS_MIN = 3
+# En dessous de cette taille, le vocabulaire n'est pas représentatif : pas de filtrage
+TAILLE_VOCABULAIRE_MIN = 1000
 
 
 def ocr(chemin: Path, tessdata: str, langue: str = "fra", dpi: int = 300) -> Resultat:
@@ -38,6 +46,22 @@ def ocr(chemin: Path, tessdata: str, langue: str = "fra", dpi: int = 300) -> Res
         statut="indexe", contenu=contenu, methode="ocr", nb_pages=len(pages),
         code_doc=detecter_code(contenu[:5000]),
     )
+
+
+def texte_exploitable(contenu: str, vocabulaire: set[str]) -> bool:
+    """Faux si le texte OCR n'est que du bruit (photo, dessin, schéma sans texte).
+
+    Sur une photo, Tesseract « lit » des formes au hasard : des fragments comme « RAR », « ee ET »
+    ou « ÉNesN ». On compte la part de vrais mots (au moins 4 lettres, présents dans le vocabulaire
+    des documents lisibles directement) parmi tous les fragments.
+    """
+    if len(vocabulaire) < TAILLE_VOCABULAIRE_MIN:
+        return bool(contenu.strip())
+    fragments = [f for f in re.findall(r"[^\W\d_]+", contenu) if len(f) >= 2]
+    if not fragments:
+        return False
+    connus = sum(1 for f in fragments if len(f) >= 4 and normaliser(f) in vocabulaire)
+    return connus >= MOTS_CONNUS_MIN and connus / len(fragments) >= TAUX_MOTS_CONNUS_MIN
 
 
 def resolution_effective(largeur_pt: float, hauteur_pt: float, dpi: int) -> int:

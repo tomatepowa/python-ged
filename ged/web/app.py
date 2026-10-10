@@ -49,6 +49,14 @@ def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
     app = FastAPI(title="GED DSI", lifespan=cycle_de_vie, docs_url=None, redoc_url=None)
     app.mount("/static", StaticFiles(directory=ICI / "static"), name="static")
 
+    def contexte_resultats(filtres: Filtres, conn) -> dict:
+        resultats = rechercher(conn, filtres)
+        return {
+            "filtres": filtres,
+            "resultats": resultats,
+            "nb_pages": max(1, -(-resultats.total // PAR_PAGE)),
+        }
+
     @app.get("/", response_class=HTMLResponse)
     def accueil(
         request: Request,
@@ -60,7 +68,7 @@ def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
     ):
         filtres = Filtres(q=q, pole=pole, famille=famille, tags=tag, page=max(page, 1))
         with pool.connection() as conn:
-            resultats = rechercher(conn, filtres)
+            contexte = contexte_resultats(filtres, conn)
             choix = facettes(conn)
         tags_par_categorie: dict[str, list[dict]] = {}
         for t in choix["tags"]:
@@ -68,14 +76,23 @@ def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
         return templates.TemplateResponse(
             request,
             "recherche.html",
-            {
-                "filtres": filtres,
-                "resultats": resultats,
-                "choix": choix,
-                "tags_par_categorie": tags_par_categorie,
-                "nb_pages": max(1, -(-resultats.total // PAR_PAGE)),
-            },
+            {**contexte, "choix": choix, "tags_par_categorie": tags_par_categorie},
         )
+
+    @app.get("/resultats", response_class=HTMLResponse)
+    def resultats_seuls(
+        request: Request,
+        q: str = "",
+        pole: str = "",
+        famille: str = "",
+        tag: Annotated[list[int], Query()] = [],
+        page: int = 1,
+    ):
+        """Fragment HTML de la liste de résultats, pour la recherche pendant la frappe."""
+        filtres = Filtres(q=q, pole=pole, famille=famille, tags=tag, page=max(page, 1))
+        with pool.connection() as conn:
+            contexte = contexte_resultats(filtres, conn)
+        return templates.TemplateResponse(request, "_resultats.html", contexte)
 
     @app.get("/document/{document_id}", response_class=HTMLResponse)
     def detail(request: Request, document_id: int):

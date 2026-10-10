@@ -24,6 +24,10 @@ def main(argv: list[str] | None = None) -> None:
     p_ocr = commandes.add_parser("ocr", help="passe en OCR les documents scannés en attente")
     p_ocr.add_argument("--limite", type=int, help="nombre maximum de documents à traiter")
 
+    commandes.add_parser(
+        "recalculer", help="réapplique tags, codes et filtre OCR sans relire les fichiers (après modif. de taxonomie.toml)"
+    )
+
     commandes.add_parser("serveur", help="lance l'interface web de recherche")
 
     args = parser.parse_args(argv)
@@ -58,6 +62,14 @@ def main(argv: list[str] | None = None) -> None:
             bilan = Indexeur(cfg, conn).ocr(limite=args.limite)
         _afficher_bilan("OCR terminé", bilan)
 
+    elif args.commande == "recalculer":
+        from ged.db import connecter
+        from ged.indexeur import Indexeur
+
+        with connecter(cfg.url_base) as conn:
+            bilan = Indexeur(cfg, conn).recalculer()
+        _afficher_bilan("Recalcul terminé", bilan)
+
     elif args.commande == "serveur":
         import uvicorn
 
@@ -71,6 +83,10 @@ def _afficher_bilan(titre: str, bilan) -> None:
     libelles = {
         "indexe": "texte indexé",
         "ocr_requis": "scans en attente d'OCR",
+        "sans_texte": "images sans texte lisible",
+        "recalcule": "documents recalculés",
+        "ocr_ecarte": "textes OCR écartés (illisibles)",
+        "vocabulaire": "mots dans le vocabulaire",
         "non_supporte": "formats non lus",
         "erreur": "erreurs de lecture",
         "inchange": "inchangés (non relus)",

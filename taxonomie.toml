@@ -3,12 +3,19 @@
 # Format : "Libellé du tag" = ["mot-clé", "autre mot-clé", ...]
 #   - la casse et les accents sont ignorés ("Identitovigilance" = "identitovigilance")
 #   - un mot-clé est cherché en mot entier ("ad" ne trouve pas "admission")
-#   - un tag est posé si le score atteint le seuil : 1 point par occurrence dans le texte,
-#     3 points par occurrence dans le nom, le titre ou le chemin du fichier
+#   - préfixe "titre:" : le mot-clé ne compte que dans le nom, le titre ou le chemin du fichier
+#     (pour les mots trop courants dans un texte, comme "procédure" ou "identité")
+#
+# Un tag est posé si un mot-clé apparaît dans le nom / titre / chemin du fichier,
+# ou s'il apparaît au moins `seuil` fois dans le texte, avec au moins `densite_min`
+# mentions pour 1000 mots (un long document cite tout sans en parler vraiment).
+#
+# Après modification de ce fichier : `ged recalculer` (ne relit pas les fichiers).
 #
 # C'EST UN PREMIER JET À COMPLÉTER AVEC LES POLES (liste réelle des logiciels et secteurs).
 
 seuil = 2
+densite_min = 0.5
 
 [logiciel]
 "EasyVista" = ["easyvista", "easy vista"]
@@ -25,16 +32,16 @@ seuil = 2
 # "Nom du logiciel de facturation" = ["..."]
 
 [secteur]
-"Identité" = ["identitovigilance", "identite", "ins", "inc", "doublon patient", "admission", "gam"]
-"Soins" = ["dossier de soins", "dpi", "prescription", "plan de soins", "administration medicamenteuse", "transmissions"]
-"Comptabilité / facturation" = ["facturation", "comptabilite", "pmsi", "t2a", "noemie", "b2", "titre de recette"]
-"Pharmacie" = ["pharmacie", "dispensation", "stupefiants"]
-"Laboratoire" = ["laboratoire", "biologie", "resultats d'analyse"]
-"Imagerie" = ["imagerie", "pacs", "radiologie", "dicom"]
-"Ressources humaines" = ["paie", "planning", "gestion des temps", "ressources humaines"]
-"Infrastructure" = ["serveur", "reseau", "switch", "pare-feu", "sauvegarde", "stockage"]
+"Identité" = ["identitovigilance", "identito", "doublon patient", "doublons patients", "identifiant national de sante", "titre:identite", "titre:ins", "titre:gam"]
+"Soins" = ["dossier de soins", "plan de soins", "administration medicamenteuse", "dpi", "titre:soins"]
+"Comptabilité / facturation" = ["facturation", "titre de recette", "pmsi", "t2a", "noemie", "titre:comptabilite", "titre:factu"]
+"Pharmacie" = ["dispensation", "titre:pharmacie"]
+"Laboratoire" = ["titre:laboratoire", "titre:biologie"]
+"Imagerie" = ["pacs", "dicom", "titre:imagerie", "titre:radiologie"]
+"Ressources humaines" = ["gestion des temps", "titre:paie", "titre:rh"]
+"Infrastructure" = ["pare-feu", "vlan", "baie de stockage", "titre:serveur", "titre:reseau", "titre:sauvegarde"]
 
 [type]
 "Note technique" = ["note technique"]
-"Procédure" = ["procedure", "mode operatoire"]
-"Debug utilisateur" = ["message d'erreur", "ne fonctionne pas", "depannage", "debug", "redemarrer", "resolution"]
+"Procédure" = ["mode operatoire", "titre:procedure"]
+"Debug utilisateur" = ["message d'erreur", "ne fonctionne pas", "depannage", "contournement", "titre:debug", "titre:incident"]

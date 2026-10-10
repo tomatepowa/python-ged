@@ -5,9 +5,10 @@ from __future__ import annotations
 import re
 import unicodedata
 
-# Code documentaire du type DSI-INFRA-NT-001-v02.
+# Code documentaire du type DSI-INFRA-NT-001-v02 : segments alphabétiques, puis un numéro.
+# Les segments intermédiaires commencent par une lettre, pour écarter les dates du type SOLID-20-10-20.
 # À ajuster quand la règle de la procédure des procédures sera formalisée.
-MOTIF_CODE = re.compile(r"\b[A-Z]{2,6}(?:-[A-Z0-9]{2,8}){1,3}-\d{2,4}(?:-[vV]?\d{1,3})?\b")
+MOTIF_CODE = re.compile(r"\b[A-Z]{2,6}(?:-[A-Z][A-Z0-9]{1,7}){1,3}-\d{2,4}(?:-[vV]?\d{1,3})?\b")
 
 
 def sans_accents(texte: str) -> str:

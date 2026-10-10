@@ -127,6 +127,8 @@ def test_famille(extension, attendu):
         ("Réf : DSI-INFRA-PRO-012-v03 page 1", "DSI-INFRA-PRO-012-v03"),
         ("code DSI-METIER-NT-7 incomplet", None),
         ("DSI-BI-MO-0042", "DSI-BI-MO-0042"),
+        # Faux positif constaté sur un acte notarié : une date n'est pas un code
+        ("Réf. SOLID-20-10-20", None),
     ],
 )
 def test_detecter_code(texte, attendu):
@@ -140,3 +142,14 @@ def test_resolution_ocr_plafonnee_pour_les_photos():
     assert resolution_effective(595, 842, 300) == 300
     # Photo 4000 x 3000 px vue à 72 dpi : page de 55 pouces, rendue à environ 4000 px de large
     assert resolution_effective(4000, 3000, 300) == 72
+
+
+def test_texte_ocr_exploitable():
+    from ged.ocr import texte_exploitable
+
+    vocabulaire = {f"mot{i}" for i in range(2000)} | {"facture", "pharmacie", "client", "date", "numero"}
+    assert texte_exploitable("Facture pharmacie\nNuméro client 1234 Date 16/09/2025", vocabulaire)
+    # Bruit typique d'une photo passée en OCR
+    assert not texte_exploitable("= Aa 7 RAR ÉAE LORS ÈS EX ÉNesN PR etALES\nee ET | ; te", vocabulaire)
+    # Vocabulaire trop petit pour juger : on garde tout texte non vide
+    assert texte_exploitable("ee ET", {"facture"})

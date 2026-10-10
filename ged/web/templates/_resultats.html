@@ -1,0 +1,41 @@
+<p class="resume">
+  {% if resultats.mode == "recents" %}
+    {{ resultats.total }} document{{ "s" if resultats.total > 1 }} — les plus récents en premier
+  {% elif resultats.total == 0 %}
+    Aucun résultat pour « {{ filtres.q }} ». Essayez un autre mot, ou retirez des filtres.
+  {% else %}
+    {{ resultats.total }} résultat{{ "s" if resultats.total > 1 }}
+    {% if resultats.mode == "corrige" %}<span class="note">pour « <strong>{{ resultats.correction }}</strong> » (orthographe corrigée)</span>{% endif %}
+    {% if resultats.mode == "approchant" %}<span class="note">(noms de fichiers approchants)</span>{% endif %}
+  {% endif %}
+</p>
+
+{% for d in resultats.documents %}
+<article class="resultat">
+  <h2><a href="/document/{{ d.id }}">{{ d.nom }}</a></h2>
+  {% if d.sous_titre %}<p class="sous-titre">{{ d.sous_titre }}</p>{% endif %}
+  <div class="meta">
+    <span class="badge pole">{{ d.pole }}</span>
+    <span class="badge">{{ d.famille }}</span>
+    {% if d.code_doc %}<span class="badge code">{{ d.code_doc }}</span>{% endif %}
+    {% for t in d.tags %}<span class="badge tag">{{ t.libelle }}</span>{% endfor %}
+    {% if d.statut == "ocr_requis" %}<span class="badge alerte">Scan non lu (OCR en attente)</span>{% endif %}
+    {% if d.statut == "sans_texte" %}<span class="badge">Image sans texte</span>{% endif %}
+    <span class="date">modifié le {{ d.modifie_le | date }}</span>
+  </div>
+  {% if d.extrait %}<p class="extrait">{{ d.extrait }}</p>{% endif %}
+  <div class="actions">
+    <a class="bouton" href="/document/{{ d.id }}/fichier" target="_blank">Ouvrir</a>
+    <button type="button" class="bouton secondaire" data-copier="{{ d.chemin }}">Copier le chemin</button>
+    <span class="chemin">{{ d.chemin_relatif }}</span>
+  </div>
+</article>
+{% endfor %}
+
+{% if nb_pages > 1 %}
+<nav class="pagination">
+  {% if filtres.page > 1 %}<a class="bouton secondaire" href="/?{{ filtres.lien(filtres.page - 1) }}" data-page>← Précédent</a>{% endif %}
+  <span>Page {{ filtres.page }} / {{ nb_pages }}</span>
+  {% if filtres.page < nb_pages %}<a class="bouton secondaire" href="/?{{ filtres.lien(filtres.page + 1) }}" data-page>Suivant →</a>{% endif %}
+</nav>
+{% endif %}

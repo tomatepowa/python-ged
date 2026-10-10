@@ -19,27 +19,30 @@ import psycopg
 
 from ged.config import Config, Source
 from ged.extraction import Resultat, extraire, famille
-from ged.ocr import ocr
+from ged.ocr import ocr, texte_exploitable
 from ged.taxonomie import Taxonomie
+from ged.texte import detecter_code
 
 log = logging.getLogger(__name__)
 
 # Dossiers techniques : corbeilles et vignettes de NAS, instantanés, historiques de synchronisation
 DOSSIERS_SYSTEME = {
     "#recycle", "@eadir", "@recycle", ".@__thumb", "#snapshot", "~snapshot", ".snapshot",
-    ".stversions", "$recycle.bin", "system volume information",
+    ".stversions", ".stfolder", ".git", "$recycle.bin", "system volume information",
 }
-NOMS_BRUIT = {"thumbs.db", "desktop.ini", ".ds_store"}
+NOMS_BRUIT = {"thumbs.db", "desktop.ini"}
 EXTENSIONS_BRUIT = {".tmp", ".lnk", ".url"}
 # Jamais indexés : coffres de mots de passe, clés privées, certificats
 EXTENSIONS_SENSIBLES = {".kdbx", ".kdb", ".kbdx", ".pfx", ".p12", ".key", ".pem", ".ppk"}
 
 COMMIT_TOUS_LES = 50
+MESSAGE_SANS_TEXTE = "OCR : aucun texte lisible (photo, dessin, schéma ?)"
 
 
 def est_ignore(chemin: Path, exclusions: list[str]) -> bool:
     nom = chemin.name.lower()
-    if nom.startswith("~$") or nom in NOMS_BRUIT:
+    # "~$" : fichiers temporaires Office ; "." : fichiers techniques cachés (.stignore, .DS_Store...)
+    if nom.startswith(("~$", ".")) or nom in NOMS_BRUIT:
         return True
     ext = chemin.suffix.lower()
     if ext in EXTENSIONS_BRUIT or ext in EXTENSIONS_SENSIBLES:
@@ -69,6 +72,30 @@ def empreinte(chemin: Path) -> str:
     return h.hexdigest()
 
 
+def rafraichir_vocabulaire(conn: psycopg.Connection) -> int:
+    """Recalcule la liste des mots du corpus.
+
+    Seuls les documents lus directement comptent : le texte OCR pourrait y introduire son propre
+    bruit, qui serait ensuite considéré comme des mots valides.
+    """
+    conn.execute("TRUNCATE vocabulaire")
+    conn.execute(
+        """
+        INSERT INTO vocabulaire (mot, nb_docs)
+        SELECT word, ndoc FROM ts_stat($$
+            SELECT to_tsvector('simple', unaccent(lower(
+                coalesce(titre, '') || ' ' || regexp_replace(nom, '[._\\-]+', ' ', 'g') || ' '
+                || left(coalesce(contenu, ''), 200000))))
+            FROM document WHERE statut = 'indexe' AND methode IN ('texte', 'conversion') AND supprime_le IS NULL
+        $$)
+        WHERE length(word) BETWEEN 3 AND 40 AND word ~ '^[a-z]+$'
+        """
+    )
+    nb = conn.execute("SELECT count(*) AS nb FROM vocabulaire").fetchone()["nb"]
+    conn.commit()
+    return nb
+
+
 class Indexeur:
     def __init__(self, cfg: Config, conn: psycopg.Connection):
         self.cfg = cfg
@@ -88,6 +115,7 @@ class Indexeur:
                 bilan["sources_inaccessibles"] += 1
                 continue
             bilan += self._indexer_source(source, forcer)
+        log.info("Vocabulaire : %d mots", rafraichir_vocabulaire(self.conn))
         return bilan
 
     def _indexer_source(self, source: Source, forcer: bool) -> Counter:
@@ -106,7 +134,7 @@ class Indexeur:
                 self.conn.commit()
                 log.info("  %d fichiers parcourus", i)
 
-        # Les fichiers non revus pendant ce passage ont disparu de la source
+        # Les fichiers non revus pendant ce passage ont disparu de la source (ou sont désormais ignorés)
         supprimes = self.conn.execute(
             "UPDATE document SET supprime_le = now() "
             "WHERE source_id = %s AND vu_le < %s AND supprime_le IS NULL",
@@ -131,7 +159,9 @@ class Indexeur:
         modifie_le = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
 
         existant = self.conn.execute(
-            "SELECT id, taille, modifie_le FROM document WHERE chemin = %s", (str(chemin),)
+            "SELECT id, taille, modifie_le, empreinte, statut, methode, contenu, code_doc, nb_pages "
+            "FROM document WHERE chemin = %s",
+            (str(chemin),),
         ).fetchone()
         if existant and not forcer and existant["taille"] == stat.st_size and existant["modifie_le"] == modifie_le:
             self.conn.execute(
@@ -139,10 +169,21 @@ class Indexeur:
             )
             return "inchange"
 
+        signature = empreinte(chemin)
         if stat.st_size > self.cfg.taille_max_mo * 1024 * 1024:
             resultat = Resultat(statut="non_supporte", erreur=f"Fichier de plus de {self.cfg.taille_max_mo} Mo")
         else:
             resultat = extraire(chemin, self.cfg.soffice)
+
+        # Contenu identique déjà passé en OCR : on garde le résultat (l'OCR est lent)
+        if (existant and existant["methode"] == "ocr" and existant["empreinte"] == signature
+                and resultat.statut == "ocr_requis"):
+            resultat.statut = existant["statut"]
+            resultat.contenu = existant["contenu"] or ""
+            resultat.methode = "ocr"
+            resultat.code_doc = existant["code_doc"]
+            resultat.nb_pages = existant["nb_pages"]
+            resultat.erreur = MESSAGE_SANS_TEXTE if existant["statut"] == "sans_texte" else None
 
         ligne = self.conn.execute(
             """
@@ -171,7 +212,7 @@ class Indexeur:
                 "famille": famille(chemin.suffix),
                 "taille": stat.st_size,
                 "modifie_le": modifie_le,
-                "empreinte": empreinte(chemin),
+                "empreinte": signature,
                 "statut": resultat.statut,
                 "erreur": resultat.erreur,
                 "methode": resultat.methode,
@@ -189,12 +230,16 @@ class Indexeur:
 
     # --- OCR --------------------------------------------------------------------------
 
+    def _vocabulaire(self) -> set[str]:
+        return {r["mot"] for r in self.conn.execute("SELECT mot FROM vocabulaire WHERE length(mot) >= 4")}
+
     def ocr(self, limite: int | None = None) -> Counter:
         if not self.cfg.tessdata:
             raise SystemExit("OCR : renseignez [ocr] tessdata dans config.toml.")
         bilan: Counter = Counter()
+        vocabulaire = self._vocabulaire()
         a_traiter = self.conn.execute(
-            "SELECT d.id, d.chemin, d.titre, d.chemin_relatif, d.contenu FROM document d "
+            "SELECT d.id, d.chemin, d.titre, d.chemin_relatif FROM document d "
             "WHERE d.statut = 'ocr_requis' AND d.supprime_le IS NULL ORDER BY d.modifie_le DESC LIMIT %s",
             (limite,),
         ).fetchall()
@@ -203,21 +248,62 @@ class Indexeur:
         for i, doc in enumerate(a_traiter, start=1):
             log.info("  [%d/%d] %s", i, len(a_traiter), doc["chemin_relatif"])
             resultat = ocr(Path(doc["chemin"]), self.cfg.tessdata, self.cfg.langue_ocr, self.cfg.dpi_ocr)
-            if resultat.statut == "indexe":
-                # Un PDF mixte peut déjà contenir un peu de texte : l'OCR le remplace (il le contient)
-                self.conn.execute(
-                    "UPDATE document SET contenu = %s, statut = 'indexe', methode = 'ocr', erreur = NULL, "
-                    "code_doc = coalesce(code_doc, %s), nb_pages = coalesce(nb_pages, %s), indexe_le = now() "
-                    "WHERE id = %s",
-                    (resultat.contenu.replace("\x00", ""), resultat.code_doc, resultat.nb_pages, doc["id"]),
-                )
-                self._appliquer_tags(doc["id"], f"{doc['titre'] or ''} {doc['chemin_relatif']}", resultat.contenu)
-            else:
+            if resultat.statut == "indexe" and not texte_exploitable(resultat.contenu, vocabulaire):
+                resultat = Resultat(statut="sans_texte", methode="ocr", nb_pages=resultat.nb_pages,
+                                    erreur=MESSAGE_SANS_TEXTE)
+
+            if resultat.statut == "erreur":
                 self.conn.execute(
                     "UPDATE document SET statut = 'erreur', erreur = %s WHERE id = %s", (resultat.erreur, doc["id"])
                 )
+            else:
+                # Un PDF mixte peut déjà contenir un peu de texte : l'OCR le remplace (il le contient)
+                self.conn.execute(
+                    "UPDATE document SET contenu = %s, statut = %s, methode = 'ocr', erreur = %s, "
+                    "code_doc = coalesce(code_doc, %s), nb_pages = coalesce(nb_pages, %s), indexe_le = now() "
+                    "WHERE id = %s",
+                    (resultat.contenu.replace("\x00", ""), resultat.statut, resultat.erreur,
+                     resultat.code_doc, resultat.nb_pages, doc["id"]),
+                )
+                self._appliquer_tags(doc["id"], f"{doc['titre'] or ''} {doc['chemin_relatif']}", resultat.contenu)
             self.conn.commit()
             bilan[resultat.statut] += 1
+
+        if a_traiter:
+            log.info("Vocabulaire : %d mots", rafraichir_vocabulaire(self.conn))
+        return bilan
+
+    # --- Recalcul sans relire les fichiers ----------------------------------------------
+
+    def recalculer(self) -> Counter:
+        """Réapplique taxonomie, détection de code et filtre OCR au contenu déjà en base.
+
+        À lancer après une modification de taxonomie.toml ou des règles : aucun fichier n'est relu.
+        """
+        bilan: Counter = Counter()
+        rafraichir_vocabulaire(self.conn)
+        vocabulaire = self._vocabulaire()
+        documents = self.conn.execute(
+            "SELECT id, titre, chemin_relatif, statut, methode, contenu FROM document WHERE supprime_le IS NULL"
+        ).fetchall()
+        for doc in documents:
+            contenu = doc["contenu"] or ""
+            if doc["methode"] == "ocr" and doc["statut"] == "indexe" and not texte_exploitable(contenu, vocabulaire):
+                self.conn.execute(
+                    "UPDATE document SET statut = 'sans_texte', contenu = '', erreur = %s, code_doc = NULL "
+                    "WHERE id = %s",
+                    (MESSAGE_SANS_TEXTE, doc["id"]),
+                )
+                contenu = ""
+                bilan["ocr_ecarte"] += 1
+            else:
+                self.conn.execute(
+                    "UPDATE document SET code_doc = %s WHERE id = %s", (detecter_code(contenu[:5000]), doc["id"])
+                )
+            self._appliquer_tags(doc["id"], f"{doc['titre'] or ''} {doc['chemin_relatif']}", contenu)
+            bilan["recalcule"] += 1
+        self.conn.commit()
+        bilan["vocabulaire"] = rafraichir_vocabulaire(self.conn)
         return bilan
 
     # --- Tags ---------------------------------------------------------------------------

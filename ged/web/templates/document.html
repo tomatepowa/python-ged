@@ -1,11 +1,12 @@
 {% extends "base.html" %}
-{% block titre %}{{ doc.titre or doc.nom }} – GED DSI{% endblock %}
+{% block titre %}{{ doc.nom }} – GED DSI{% endblock %}
 
 {% block contenu %}
 <p><a href="javascript:history.back()">← Retour aux résultats</a></p>
 
 <article class="fiche">
-  <h1>{{ doc.titre or doc.nom }}</h1>
+  <h1>{{ doc.nom }}</h1>
+  {% if doc.titre and doc.titre != doc.nom %}<p class="sous-titre">Titre interne : {{ doc.titre }}</p>{% endif %}
   <div class="actions">
     <a class="bouton" href="/document/{{ doc.id }}/fichier" target="_blank">Ouvrir le fichier</a>
     <button type="button" class="bouton secondaire" data-copier="{{ doc.chemin }}">Copier le chemin</button>
@@ -27,6 +28,7 @@
     <dd>
       {% if doc.statut == "indexe" %}Texte indexé ({{ {"texte": "lecture directe", "ocr": "OCR", "conversion": "conversion LibreOffice"}.get(doc.methode, doc.methode) }})
       {% elif doc.statut == "ocr_requis" %}Document scanné : OCR en attente
+      {% elif doc.statut == "sans_texte" %}Image ou scan sans texte lisible (photo, dessin, schéma)
       {% elif doc.statut == "non_supporte" %}Contenu non lu (format non pris en charge){% if doc.erreur %} — {{ doc.erreur }}{% endif %}
       {% else %}Erreur de lecture : {{ doc.erreur }}{% endif %}
     </dd>

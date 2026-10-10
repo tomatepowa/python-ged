@@ -173,3 +173,17 @@ th { color: var(--texte-doux); font-weight: 600; }
   .proprietes { grid-template-columns: 1fr; }
   .date { margin-left: 0; }
 }
+
+/* Recherche pendant la frappe */
+.resultats { transition: opacity .15s; }
+.resultats.chargement { opacity: .55; }
+.sous-titre { margin: -.2rem 0 .45rem; color: var(--texte-doux); font-size: .9rem; }
+.effacer {
+  align-self: flex-start;
+  padding: 0;
+  background: none;
+  color: var(--accent);
+  font-weight: 400;
+  font-size: .9rem;
+  text-decoration: underline;
+}

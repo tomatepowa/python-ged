@@ -5,15 +5,22 @@ from __future__ import annotations
 import html
 import re
 from dataclasses import dataclass, field
+from itertools import islice, product
+from urllib.parse import urlencode
 
 import psycopg
 from markupsafe import Markup
+
+from ged.texte import normaliser
 
 PAR_PAGE = 20
 
 # Marqueurs de surlignage neutres : le texte est échappé AVANT d'être transformé en <mark>
 _DEBUT, _FIN = "\x02", "\x03"
 _OPTIONS_EXTRAIT = f"StartSel={_DEBUT}, StopSel={_FIN}, MaxFragments=2, MaxWords=30, MinWords=12, FragmentDelimiter=\" … \""
+
+# Guillemets, exclusion (-mot) ou OR : syntaxe "moteur de recherche", traitée par websearch_to_tsquery
+_OPERATEURS = re.compile(r'"|(?:^|\s)-\w|\sOR\s')
 
 
 @dataclass
@@ -24,69 +31,158 @@ class Filtres:
     tags: list[int] = field(default_factory=list)
     page: int = 1
 
+    def lien(self, page: int | None = None) -> str:
+        """Query string de cette recherche (pour la pagination et l'URL partageable)."""
+        parametres = [("q", self.q), ("pole", self.pole), ("famille", self.famille)]
+        parametres += [("tag", t) for t in self.tags]
+        parametres.append(("page", page or self.page))
+        return urlencode([(k, v) for k, v in parametres if v not in ("", None)])
+
 
 @dataclass
 class Resultats:
     documents: list[dict]
     total: int
-    # exact | prefixe | approchant | recents
+    # exact | saisie | corrige | approchant | recents
     mode: str
+    # Requête réellement utilisée quand les mots tapés ont été corrigés
+    correction: str | None = None
 
 
 def surligner(extrait: str | None) -> Markup:
     """Échappe l'extrait renvoyé par PostgreSQL et convertit les marqueurs en <mark>."""
     if not extrait:
         return Markup("")
-    sur = html.escape(extrait).replace(_DEBUT, "<mark>").replace(_FIN, "</mark>")
-    return Markup(sur)
+    return Markup(html.escape(extrait).replace(_DEBUT, "<mark>").replace(_FIN, "</mark>"))
 
 
-def requete_prefixe(q: str) -> str | None:
-    """'imprim reseau' -> 'imprim:* & reseau:*' : trouve les mots commençant par ce qui est tapé."""
-    mots = re.findall(r"\w+", q)
-    return " & ".join(f"{m}:*" for m in mots) or None
+def decouper(q: str) -> list[str]:
+    return re.findall(r"[^\W_]+", q)
+
+
+def requete_saisie(mots: list[str]) -> str | None:
+    """'imprimante bloq' -> 'imprimante & bloq:*' : le dernier mot est peut-être en cours de frappe."""
+    if not mots:
+        return None
+    return " & ".join(mots[:-1] + [f"{mots[-1]}:*"])
+
+
+CANDIDATS_PAR_MOT = 5
+COMBINAISONS_MAX = 25
+
+
+def corriger(conn: psycopg.Connection, mots: list[str]) -> list[str] | None:
+    """Corrige les mots absents du corpus. None si rien à corriger.
+
+    Un mot mal tapé a souvent plusieurs voisins aussi proches ("vante" : vente, santé, vant...).
+    Parmi les combinaisons de candidats présentes dans au moins un document, on retient la plus
+    proche de ce qui a été tapé (moins de lettres changées), puis, à égalité, celle que le plus
+    de documents contiennent : "promesse vente" plutôt que "promesse santé".
+    """
+    candidats: list[list[tuple[str, int]]] = []
+    for i, mot in enumerate(mots):
+        n = normaliser(mot)
+        if len(n) < 3 or n.isdigit():
+            candidats.append([(mot, 0)])
+            continue
+        dernier = i == len(mots) - 1
+        # Le dernier mot peut être un début de mot ("imprim") : il est valide s'il préfixe un mot connu
+        connu = conn.execute(
+            "SELECT 1 FROM vocabulaire WHERE mot LIKE %s LIMIT 1" if dernier
+            else "SELECT 1 FROM vocabulaire WHERE mot = %s",
+            (n.replace("%", "") + "%" if dernier else n,),
+        ).fetchone()
+        if connu:
+            candidats.append([(mot, 0)])
+            continue
+        proches = conn.execute(
+            # "%%" : opérateur de similarité pg_trgm "%" (doublé pour psycopg)
+            "SELECT mot, levenshtein(mot, %(n)s) AS distance FROM vocabulaire "
+            "WHERE mot %% %(n)s AND levenshtein(mot, %(n)s) <= %(max)s "
+            "ORDER BY distance, nb_docs DESC LIMIT %(limite)s",
+            {"n": n, "max": distance_max(n), "limite": CANDIDATS_PAR_MOT},
+        ).fetchall()
+        candidats.append([(p["mot"], p["distance"]) for p in proches] or [(mot, 0)])
+
+    if all(len(c) == 1 and c[0][0] == m for c, m in zip(candidats, mots)):
+        return None
+
+    meilleure, meilleur_score = None, None
+    for combinaison in islice(product(*candidats), COMBINAISONS_MAX):
+        mots_corriges = [mot for mot, _ in combinaison]
+        nb = conn.execute(
+            "SELECT count(*) AS nb FROM document WHERE supprime_le IS NULL AND recherche @@ to_tsquery('ged_fr', %s)",
+            (requete_saisie(mots_corriges),),
+        ).fetchone()["nb"]
+        if not nb:
+            continue
+        # Moins de lettres changées d'abord, puis plus de documents
+        score = (-sum(distance for _, distance in combinaison), nb)
+        if meilleur_score is None or score > meilleur_score:
+            meilleure, meilleur_score = mots_corriges, score
+    return meilleure
+
+
+def distance_max(mot: str) -> int:
+    """Nombre de lettres qu'une correction peut changer : 1 pour un mot court, 3 au plus."""
+    return 1 if len(mot) <= 4 else 2 if len(mot) <= 8 else 3
 
 
 def rechercher(conn: psycopg.Connection, filtres: Filtres) -> Resultats:
     q = filtres.q.strip()
     if not q:
-        return _executer(conn, filtres, mode="recents")
-    for mode in ("exact", "prefixe", "approchant"):
-        resultats = _executer(conn, filtres, mode)
+        return _executer(conn, filtres, "recents")
+
+    mots = decouper(q)
+    if _OPERATEURS.search(q):
+        resultats = _executer(conn, filtres, "exact", parametre=q)
         if resultats.total:
             return resultats
-    return resultats
+    else:
+        # Fautes de frappe : on cherche d'abord la version corrigée, sinon des résultats
+        # parasites sur les mots mal orthographiés masqueraient les bons documents
+        correction = corriger(conn, mots)
+        if correction:
+            resultats = _executer(conn, filtres, "corrige", parametre=requete_saisie(correction))
+            if resultats.total:
+                resultats.correction = " ".join(correction)
+                return resultats
+        if mots:
+            resultats = _executer(conn, filtres, "saisie", parametre=requete_saisie(mots))
+            if resultats.total:
+                return resultats
+    return _executer(conn, filtres, "approchant", parametre=q)
 
 
-def _executer(conn: psycopg.Connection, filtres: Filtres, mode: str) -> Resultats:
+def _executer(conn: psycopg.Connection, filtres: Filtres, mode: str, parametre: str | None = None) -> Resultats:
     parametres: dict = {
-        "q": filtres.q.strip(),
+        "p": parametre,
         "limite": PAR_PAGE,
         "decalage": (max(filtres.page, 1) - 1) * PAR_PAGE,
         "options": _OPTIONS_EXTRAIT,
     }
     conditions = ["d.supprime_le IS NULL"]
 
-    if mode == "exact":
-        requete_ts = "websearch_to_tsquery('ged_fr', %(q)s)"
-    elif mode == "prefixe":
-        prefixe = requete_prefixe(filtres.q)
-        if not prefixe:
-            return Resultats([], 0, mode)
-        parametres["prefixe"] = prefixe
-        requete_ts = "to_tsquery('ged_fr', %(prefixe)s)"
-    else:
-        requete_ts = None
+    requete_ts = {
+        "exact": "websearch_to_tsquery('ged_fr', %(p)s)",
+        "saisie": "to_tsquery('ged_fr', %(p)s)",
+        "corrige": "to_tsquery('ged_fr', %(p)s)",
+    }.get(mode)
 
     if requete_ts:
         conditions.append(f"d.recherche @@ {requete_ts}")
-        rang = f"ts_rank_cd(d.recherche, {requete_ts})"
+        # Pertinence : normalisée par la longueur du document (option 1), plus un bonus
+        # quand les mots sont dans le nom ou le titre (poids A)
+        rang = (
+            f"ts_rank_cd('{{0.1, 0.2, 0.4, 1.0}}', d.recherche, {requete_ts}, 1)"
+            f" + CASE WHEN ts_filter(d.recherche, '{{a}}') @@ {requete_ts} THEN 1 ELSE 0 END"
+        )
         extrait = f"ts_headline('ged_fr', left(coalesce(d.contenu, ''), 100000), {requete_ts}, %(options)s)"
     elif mode == "approchant":
         # Tolérance aux fautes de frappe, sur le nom de fichier et le titre
-        # "<%%" est l'opérateur pg_trgm "<%" (le % est doublé pour psycopg)
-        conditions.append("(%(q)s <%% d.nom OR %(q)s <%% coalesce(d.titre, ''))")
-        rang = "greatest(word_similarity(%(q)s, d.nom), word_similarity(%(q)s, coalesce(d.titre, '')))"
+        # ("<%%" est l'opérateur pg_trgm "<%", le % est doublé pour psycopg)
+        conditions.append("(%(p)s <%% d.nom OR %(p)s <%% coalesce(d.titre, ''))")
+        rang = "greatest(word_similarity(%(p)s, d.nom), word_similarity(%(p)s, coalesce(d.titre, '')))"
         extrait = "left(coalesce(d.contenu, ''), 250)"
     else:  # recents
         rang = "0"
@@ -125,9 +221,21 @@ def _executer(conn: psycopg.Connection, filtres: Filtres, mode: str) -> Resultat
     """
     lignes = conn.execute(sql, parametres).fetchall()
     for ligne in lignes:
-        ligne["extrait"] = surligner(ligne["extrait"]) if requete_ts else ligne["extrait"]
+        if requete_ts:
+            ligne["extrait"] = surligner(ligne["extrait"])
+        ligne["sous_titre"] = sous_titre(ligne["titre"], ligne["nom"])
     total = lignes[0]["total"] if lignes else 0
     return Resultats(lignes, total, mode)
+
+
+def sous_titre(titre: str | None, nom: str) -> str | None:
+    """Titre interne du document, s'il apporte une information que le nom de fichier n'a pas."""
+    if not titre:
+        return None
+    t, n = normaliser(titre).strip(), normaliser(nom)
+    if len(t) < 4 or t in n:
+        return None
+    return titre
 
 
 def facettes(conn: psycopg.Connection) -> dict:

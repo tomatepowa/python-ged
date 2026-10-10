@@ -26,13 +26,15 @@ Les fichiers ne sont **ni déplacés, ni modifiés** : l'arborescence actuelle r
 
 ## Fonctionnalités
 
+- **Recherche pendant la frappe** : les résultats se mettent à jour à chaque lettre ; le dernier mot tapé est traité comme un début de mot (`imprim` → imprimante).
 - **Recherche plein texte en français** : insensible aux accents et aux pluriels (« procédures » trouve « procedure »), opérateurs de recherche web (`"phrase exacte"`, `-exclure`, `OR`).
-- **Tolérance** : si rien n'est trouvé, recherche par début de mot (`imprim` → imprimante), puis par similarité sur les noms de fichiers (fautes de frappe).
+- **Correction des fautes de frappe** à partir du vocabulaire réel des documents (« promese vante » → « promesse vente »), puis recherche approchante sur les noms de fichiers.
+- **Classement** : un document dont le nom ou le titre contient les mots cherchés passe devant ceux qui les citent seulement dans le texte.
 - **Extraits surlignés** : chaque résultat montre le passage où apparaissent les mots cherchés.
 - **Filtres** : pôle (Métier, Infra, BI, ITO…), type de fichier, tags.
 - **Tags automatiques** par dictionnaire de mots-clés ([`taxonomie.toml`](taxonomie.toml)) : logiciel, secteur (identité, soins, facturation…), type de note.
 - **Code documentaire** détecté dans l'en-tête ou le début du texte (format `DSI-INFRA-NT-001-v02`).
-- **OCR** des PDF scannés et des images (captures d'écran, photos).
+- **OCR** des PDF scannés et des images (captures d'écran, photos). Les images sans texte lisible (photos, dessins, schémas) sont détectées et leur « texte » OCR, qui ne serait que du bruit, est écarté.
 - **Doublons** : la fiche d'un document signale ses copies identiques ailleurs dans les partages.
 - **Indexation incrémentale** : seuls les fichiers nouveaux ou modifiés sont relus ; les fichiers supprimés disparaissent des résultats.
 - **Sécurité** : coffres KeePass, clés privées et certificats (`.kdbx`, `.pfx`, `.pem`…) ne sont jamais indexés ; les corbeilles et instantanés du NAS sont ignorés.
@@ -75,7 +77,7 @@ Tout fonctionne nativement sous Windows Server, sans Docker.
 |---|---|---|
 | [Python 3.11+](https://www.python.org/downloads/windows/) | oui | |
 | [uv](https://docs.astral.sh/uv/) | recommandé | gestionnaire de projet Python, installable sans droits admin |
-| [PostgreSQL 16+](https://www.postgresql.org/download/windows/) | oui | extensions `unaccent` et `pg_trgm` (incluses dans l'installeur standard) |
+| [PostgreSQL 16+](https://www.postgresql.org/download/windows/) | oui | extensions `unaccent`, `pg_trgm` et `fuzzystrmatch` (incluses dans l'installeur standard) |
 | Fichier de langue `fra.traineddata` | pour l'OCR | à récupérer sur [tesseract-ocr/tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast) (ou `tessdata_best`, plus précis et plus lent) |
 | [LibreOffice](https://fr.libreoffice.org/) | non | uniquement pour lire les anciens `.doc`, `.xls`, `.ppt` |
 
@@ -103,7 +105,7 @@ copy config.exemple.toml config.toml   # puis éditer config.toml
 uv run ged init-db
 ```
 
-> `init-db` crée les extensions `unaccent` et `pg_trgm`. Si le rôle `ged` n'a pas le droit de les créer, les créer une fois en superutilisateur dans la base `ged`.
+> `init-db` crée les extensions `unaccent`, `pg_trgm` et `fuzzystrmatch`. Si le rôle `ged` n'a pas le droit de les créer, les créer une fois en superutilisateur dans la base `ged`.
 
 ## Configuration
 
@@ -123,13 +125,14 @@ chemin = '\\nas\infra\ged'
 pole = "Infra"
 ```
 
-Les tags automatiques se règlent dans [`taxonomie.toml`](taxonomie.toml) : un libellé, une liste de mots-clés. **La liste fournie est un premier jet à compléter avec les pôles** (logiciels métier réels, secteurs).
+Les tags automatiques se règlent dans [`taxonomie.toml`](taxonomie.toml) : un libellé, une liste de mots-clés (préfixe `titre:` pour un mot-clé qui ne compte que dans le nom ou le titre du document). Après modification, `ged recalculer` réapplique les règles sans relire les fichiers. **La liste fournie est un premier jet à compléter avec les pôles** (logiciels métier réels, secteurs).
 
 ## Utilisation
 
 ```powershell
 uv run ged indexer             # indexe les nouveautés (rapide si peu de changements)
-uv run ged indexer --forcer    # relit tout (après modification de taxonomie.toml par exemple)
+uv run ged indexer --forcer    # relit tous les fichiers (le texte OCR des fichiers inchangés est conservé)
+uv run ged recalculer          # réapplique tags et codes sans relire les fichiers (après modif. de taxonomie.toml)
 uv run ged ocr                 # passe en OCR les scans en attente
 uv run ged ocr --limite 50     # ... par lots
 uv run ged serveur             # interface web sur http://127.0.0.1:8000
@@ -137,7 +140,7 @@ uv run ged serveur             # interface web sur http://127.0.0.1:8000
 
 Dans l'interface :
 
-- taper quelques mots (`imprimante bloquée`, `"message d'erreur"`, `identitovigilance -formation`) ;
+- taper quelques mots : les résultats s'affichent au fil de la frappe (`imprimante bloq`, `"message d'erreur"`, `identitovigilance -formation`) ;
 - affiner avec les filtres à gauche ;
 - **Ouvrir** affiche le fichier (PDF, images) ou le télécharge (Word, Excel) ;
 - **Copier le chemin** donne le chemin réseau à coller dans l'explorateur Windows ;

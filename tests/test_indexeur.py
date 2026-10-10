@@ -2,7 +2,7 @@ from pathlib import Path
 
 from ged.config import charger
 from ged.indexeur import parcourir
-from ged.recherche import requete_prefixe, surligner
+from ged.recherche import Filtres, requete_saisie, sous_titre, surligner
 
 
 def creer(racine: Path, *chemins: str) -> None:
@@ -18,6 +18,8 @@ def test_parcourir_ignore_bruit_systeme_et_sensible(tmp_path):
         "Infra/note.docx",
         "Infra/~$note.docx",
         "Infra/Thumbs.db",
+        "Infra/.stignore",
+        "Infra/.stfolder/marqueur",
         "Infra/raccourci.lnk",
         "Infra/#recycle/supprime.docx",
         "Infra/@eaDir/vignette.jpg",
@@ -31,9 +33,20 @@ def test_parcourir_ignore_bruit_systeme_et_sensible(tmp_path):
     assert trouves == {"Infra/note.docx", "Metier/procedure.pdf"}
 
 
-def test_requete_prefixe():
-    assert requete_prefixe("imprim réseau") == "imprim:* & réseau:*"
-    assert requete_prefixe("  !! ") is None
+def test_requete_saisie_dernier_mot_en_prefixe():
+    assert requete_saisie(["imprimante", "bloq"]) == "imprimante & bloq:*"
+    assert requete_saisie([]) is None
+
+
+def test_sous_titre_seulement_s_il_apporte_une_information():
+    assert sous_titre("NI ASSUREPONSE IMMO", "Simulation CA.pdf") == "NI ASSUREPONSE IMMO"
+    assert sous_titre("Procédure VPN", "Procedure VPN v2.docx") is None
+    assert sous_titre(None, "x.pdf") is None
+
+
+def test_lien_de_pagination():
+    f = Filtres(q="vpn bloqué", pole="Infra", tags=[3, 7], page=2)
+    assert f.lien(3) == "q=vpn+bloqu%C3%A9&pole=Infra&tag=3&tag=7&page=3"
 
 
 def test_surligner_echappe_le_html():

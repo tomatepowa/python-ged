@@ -176,7 +176,63 @@ th { color: var(--texte-doux); font-weight: 600; }
 
 /* Recherche pendant la frappe */
 .resultats { transition: opacity .15s; }
-.resultats.chargement { opacity: .55; }
+/* Le voile n'apparaît que si la réponse tarde (évite un clignotement à chaque frappe) */
+.resultats.chargement { opacity: .55; transition-delay: .2s; }
+
+/* Suggestions sous la barre de recherche */
+.champ { position: relative; flex: 1; min-width: 0; display: flex; }
+.champ input { width: 100%; }
+.suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 10;
+  padding: .3rem 0;
+  max-height: 70vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--bordure);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .25);
+}
+.suggestion {
+  display: flex;
+  align-items: baseline;
+  gap: .6rem;
+  padding: .45rem 1rem;
+  cursor: pointer;
+}
+.suggestion[aria-selected="true"], .suggestion:hover { background: var(--badge); }
+.suggestion .icone { width: 1rem; color: var(--texte-doux); }
+.suggestion.document .badge { flex-shrink: 0; font-size: .72rem; }
+.suggestion.document .nom { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.suggestion.document .chemin {
+  margin-left: auto;
+  max-width: 45%;
+  overflow: hidden;
+  color: var(--texte-doux);
+  font: .75rem Consolas, monospace;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  /* Coupe le début du chemin plutôt que la fin (la fin est la plus parlante) */
+  direction: rtl;
+  text-align: left;
+}
+.suggestions-titre {
+  margin-top: .3rem;
+  padding: .5rem 1rem .2rem;
+  border-top: 1px solid var(--bordure);
+  color: var(--texte-doux);
+  font-size: .75rem;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.suggestions-titre:first-child { margin-top: 0; border-top: 0; }
+
+@media (max-width: 760px) {
+  .suggestion.document .chemin { display: none; }
+}
 .sous-titre { margin: -.2rem 0 .45rem; color: var(--texte-doux); font-size: .9rem; }
 .effacer {
   align-self: flex-start;

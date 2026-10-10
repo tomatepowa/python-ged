@@ -88,3 +88,13 @@ CREATE TABLE IF NOT EXISTS vocabulaire (
 );
 
 CREATE INDEX IF NOT EXISTS vocabulaire_trgm_idx ON vocabulaire USING gin (mot gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS vocabulaire_prefixe_idx ON vocabulaire (mot text_pattern_ops);
+
+-- Minuscules sans accents, déclarée IMMUTABLE pour pouvoir être indexée (unaccent ne l'est pas)
+CREATE OR REPLACE FUNCTION ged_normaliser(texte text) RETURNS text
+    LANGUAGE sql IMMUTABLE PARALLEL SAFE
+    AS $$ SELECT lower(public.unaccent('public.unaccent'::regdictionary, texte)) $$;
+
+-- Suggestions pendant la frappe : recherche dans les noms et titres de documents
+CREATE INDEX IF NOT EXISTS document_nom_norm_trgm_idx
+    ON document USING gin (ged_normaliser(nom || ' ' || coalesce(titre, '')) gin_trgm_ops);

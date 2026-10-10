@@ -2,23 +2,17 @@
 
 from __future__ import annotations
 
-import html
 import re
 from dataclasses import dataclass, field
 from itertools import islice, product
 from urllib.parse import urlencode
 
 import psycopg
-from markupsafe import Markup
 
+from ged.extraits import construire_motif, extraire
 from ged.texte import normaliser
 
 PAR_PAGE = 20
-
-# Marqueurs de surlignage neutres : le texte est échappé AVANT d'être transformé en <mark>
-_DEBUT, _FIN = "\x02", "\x03"
-_OPTIONS_EXTRAIT = f"StartSel={_DEBUT}, StopSel={_FIN}, MaxFragments=2, MaxWords=30, MinWords=12, FragmentDelimiter=\" … \""
-
 # Guillemets, exclusion (-mot) ou OR : syntaxe "moteur de recherche", traitée par websearch_to_tsquery
 _OPERATEURS = re.compile(r'"|(?:^|\s)-\w|\sOR\s')
 
@@ -47,13 +41,6 @@ class Resultats:
     mode: str
     # Requête réellement utilisée quand les mots tapés ont été corrigés
     correction: str | None = None
-
-
-def surligner(extrait: str | None) -> Markup:
-    """Échappe l'extrait renvoyé par PostgreSQL et convertit les marqueurs en <mark>."""
-    if not extrait:
-        return Markup("")
-    return Markup(html.escape(extrait).replace(_DEBUT, "<mark>").replace(_FIN, "</mark>"))
 
 
 def decouper(q: str) -> list[str]:
@@ -107,20 +94,30 @@ def corriger(conn: psycopg.Connection, mots: list[str]) -> list[str] | None:
     if all(len(c) == 1 and c[0][0] == m for c, m in zip(candidats, mots)):
         return None
 
+    combinaisons = list(islice(product(*candidats), COMBINAISONS_MAX))
+    nombres = compter(conn, [requete_saisie([mot for mot, _ in c]) for c in combinaisons])
     meilleure, meilleur_score = None, None
-    for combinaison in islice(product(*candidats), COMBINAISONS_MAX):
-        mots_corriges = [mot for mot, _ in combinaison]
-        nb = conn.execute(
-            "SELECT count(*) AS nb FROM document WHERE supprime_le IS NULL AND recherche @@ to_tsquery('ged_fr', %s)",
-            (requete_saisie(mots_corriges),),
-        ).fetchone()["nb"]
+    for combinaison, nb in zip(combinaisons, nombres):
         if not nb:
             continue
         # Moins de lettres changées d'abord, puis plus de documents
         score = (-sum(distance for _, distance in combinaison), nb)
         if meilleur_score is None or score > meilleur_score:
-            meilleure, meilleur_score = mots_corriges, score
+            meilleure, meilleur_score = [mot for mot, _ in combinaison], score
     return meilleure
+
+
+def compter(conn: psycopg.Connection, requetes: list[str]) -> list[int]:
+    """Nombre de documents correspondant à chaque requête tsquery, en un seul aller-retour."""
+    if not requetes:
+        return []
+    lignes = conn.execute(
+        "SELECT (SELECT count(*) FROM document d WHERE d.supprime_le IS NULL "
+        "        AND d.recherche @@ to_tsquery('ged_fr', r.q)) AS nb "
+        "FROM unnest(%s::text[]) WITH ORDINALITY AS r(q, rang) ORDER BY r.rang",
+        (requetes,),
+    ).fetchall()
+    return [ligne["nb"] for ligne in lignes]
 
 
 def distance_max(mot: str) -> int:
@@ -135,7 +132,7 @@ def rechercher(conn: psycopg.Connection, filtres: Filtres) -> Resultats:
 
     mots = decouper(q)
     if _OPERATEURS.search(q):
-        resultats = _executer(conn, filtres, "exact", parametre=q)
+        resultats = _executer(conn, filtres, "exact", parametre=q, surligner=mots)
         if resultats.total:
             return resultats
     else:
@@ -143,23 +140,25 @@ def rechercher(conn: psycopg.Connection, filtres: Filtres) -> Resultats:
         # parasites sur les mots mal orthographiés masqueraient les bons documents
         correction = corriger(conn, mots)
         if correction:
-            resultats = _executer(conn, filtres, "corrige", parametre=requete_saisie(correction))
+            resultats = _executer(conn, filtres, "corrige", parametre=requete_saisie(correction), surligner=correction)
             if resultats.total:
                 resultats.correction = " ".join(correction)
                 return resultats
         if mots:
-            resultats = _executer(conn, filtres, "saisie", parametre=requete_saisie(mots))
+            resultats = _executer(conn, filtres, "saisie", parametre=requete_saisie(mots), surligner=mots)
             if resultats.total:
                 return resultats
-    return _executer(conn, filtres, "approchant", parametre=q)
+    return _executer(conn, filtres, "approchant", parametre=q, surligner=mots)
 
 
-def _executer(conn: psycopg.Connection, filtres: Filtres, mode: str, parametre: str | None = None) -> Resultats:
+def _executer(
+    conn: psycopg.Connection, filtres: Filtres, mode: str, parametre: str | None = None,
+    surligner: list[str] | None = None,
+) -> Resultats:
     parametres: dict = {
         "p": parametre,
         "limite": PAR_PAGE,
         "decalage": (max(filtres.page, 1) - 1) * PAR_PAGE,
-        "options": _OPTIONS_EXTRAIT,
     }
     conditions = ["d.supprime_le IS NULL"]
 
@@ -177,16 +176,13 @@ def _executer(conn: psycopg.Connection, filtres: Filtres, mode: str, parametre: 
             f"ts_rank_cd('{{0.1, 0.2, 0.4, 1.0}}', d.recherche, {requete_ts}, 1)"
             f" + CASE WHEN ts_filter(d.recherche, '{{a}}') @@ {requete_ts} THEN 1 ELSE 0 END"
         )
-        extrait = f"ts_headline('ged_fr', left(coalesce(d.contenu, ''), 100000), {requete_ts}, %(options)s)"
     elif mode == "approchant":
         # Tolérance aux fautes de frappe, sur le nom de fichier et le titre
         # ("<%%" est l'opérateur pg_trgm "<%", le % est doublé pour psycopg)
         conditions.append("(%(p)s <%% d.nom OR %(p)s <%% coalesce(d.titre, ''))")
         rang = "greatest(word_similarity(%(p)s, d.nom), word_similarity(%(p)s, coalesce(d.titre, '')))"
-        extrait = "left(coalesce(d.contenu, ''), 250)"
     else:  # recents
         rang = "0"
-        extrait = "left(coalesce(d.contenu, ''), 250)"
 
     if filtres.pole:
         conditions.append("s.pole = %(pole)s")
@@ -203,29 +199,88 @@ def _executer(conn: psycopg.Connection, filtres: Filtres, mode: str, parametre: 
         parametres["tags"] = filtres.tags
         parametres["nb_tags"] = len(set(filtres.tags))
 
+    # En deux temps : 1) classer tous les documents trouvés (rapide, index GIN), 2) ne lire le
+    # texte et les tags que pour la page affichée. L'extrait surligné est fabriqué en Python
+    # (ged.extraits) : ts_headline coûtait ~15 ms par long document.
     sql = f"""
+        WITH page AS (
+            SELECT d.id, {rang} AS rang, d.modifie_le, count(*) OVER () AS total
+            FROM document d
+            JOIN source s ON s.id = d.source_id
+            WHERE {' AND '.join(conditions)}
+            ORDER BY rang DESC, d.modifie_le DESC
+            LIMIT %(limite)s OFFSET %(decalage)s
+        )
         SELECT d.id, d.nom, d.titre, d.chemin, d.chemin_relatif, d.famille, d.extension, d.statut,
-               d.code_doc, d.modifie_le, d.taille, s.pole,
-               {extrait} AS extrait,
-               {rang} AS rang,
-               count(*) OVER () AS total,
+               d.code_doc, d.modifie_le, d.taille, s.pole, page.rang, page.total,
+               left(coalesce(d.contenu, ''), 60000) AS contenu,
                coalesce((SELECT json_agg(json_build_object('categorie', t.categorie, 'libelle', t.libelle)
                                          ORDER BY t.categorie, t.libelle)
                          FROM document_tag dt JOIN tag t ON t.id = dt.tag_id
                          WHERE dt.document_id = d.id), '[]') AS tags
-        FROM document d
+        FROM page
+        JOIN document d ON d.id = page.id
         JOIN source s ON s.id = d.source_id
-        WHERE {' AND '.join(conditions)}
-        ORDER BY rang DESC, d.modifie_le DESC
-        LIMIT %(limite)s OFFSET %(decalage)s
+        ORDER BY page.rang DESC, page.modifie_le DESC
     """
     lignes = conn.execute(sql, parametres).fetchall()
+    motif = construire_motif(surligner or [])
     for ligne in lignes:
-        if requete_ts:
-            ligne["extrait"] = surligner(ligne["extrait"])
+        ligne["extrait"] = extraire(ligne.pop("contenu"), motif)
         ligne["sous_titre"] = sous_titre(ligne["titre"], ligne["nom"])
     total = lignes[0]["total"] if lignes else 0
     return Resultats(lignes, total, mode)
+
+
+COMPLETIONS_MAX = 6
+DOCUMENTS_SUGGERES_MAX = 6
+
+
+def suggerer(conn: psycopg.Connection, q: str) -> dict:
+    """Suggestions pendant la frappe, façon moteur de recherche : quelques millisecondes.
+
+    - complétions : le dernier mot complété par les mots du corpus les plus fréquents
+      ("imprim" -> "imprimante", "imprimer"), en ne gardant que celles qui donnent des résultats
+      avec les mots déjà tapés ;
+    - documents : ceux dont le nom ou le titre contient tous les mots tapés, ouvrables directement.
+    """
+    mots = [normaliser(m) for m in decouper(q)]
+    if not mots:
+        return {"completions": [], "documents": []}
+
+    debut, dernier = mots[:-1], mots[-1]
+    # Mots du corpus commençant par le dernier mot tapé, mots vides exclus ("votre", "des"...
+    # n'ont pas de lexème dans la configuration ged_fr)
+    candidats = [
+        ligne["mot"] for ligne in conn.execute(
+            "SELECT mot FROM vocabulaire WHERE mot LIKE %s AND to_tsvector('ged_fr', mot) <> ''::tsvector "
+            "ORDER BY nb_docs DESC LIMIT %s",
+            (dernier.replace("%", "").replace("_", "") + "%", COMPLETIONS_MAX * 4),
+        )
+    ]
+    if debut and candidats:
+        # Plusieurs mots : on classe par nombre de documents contenant toute la combinaison
+        # ("promesse v" -> "promesse vente" avant "promesse virement")
+        nombres = compter(conn, [" & ".join(debut + [mot]) for mot in candidats])
+        candidats = [mot for mot, nb in sorted(zip(candidats, nombres), key=lambda c: -c[1]) if nb]
+    completions = [" ".join(debut + [mot]) for mot in candidats[:COMPLETIONS_MAX]]
+
+    documents = conn.execute(
+        """
+        SELECT d.id, d.nom, d.chemin_relatif, d.famille, s.pole
+        FROM document d JOIN source s ON s.id = d.source_id
+        WHERE d.supprime_le IS NULL
+          AND ged_normaliser(d.nom || ' ' || coalesce(d.titre, '')) LIKE ALL (%(motifs)s)
+        ORDER BY similarity(ged_normaliser(d.nom), %(q)s) DESC, d.modifie_le DESC
+        LIMIT %(limite)s
+        """,
+        {
+            "motifs": ["%" + m.replace("%", "").replace("_", "") + "%" for m in mots],
+            "q": " ".join(mots),
+            "limite": DOCUMENTS_SUGGERES_MAX,
+        },
+    ).fetchall()
+    return {"completions": completions, "documents": documents}
 
 
 def sous_titre(titre: str | None, nom: str) -> str | None:

@@ -15,7 +15,7 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from ged import config as configuration
-from ged.recherche import PAR_PAGE, Filtres, facettes, rechercher, statistiques
+from ged.recherche import PAR_PAGE, Filtres, facettes, rechercher, statistiques, suggerer
 
 ICI = Path(__file__).parent
 templates = Jinja2Templates(directory=ICI / "templates")
@@ -93,6 +93,12 @@ def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
         with pool.connection() as conn:
             contexte = contexte_resultats(filtres, conn)
         return templates.TemplateResponse(request, "_resultats.html", contexte)
+
+    @app.get("/suggestions")
+    def suggestions(q: str = ""):
+        """Suggestions de la liste déroulante sous la barre de recherche (JSON)."""
+        with pool.connection() as conn:
+            return suggerer(conn, q[:200])
 
     @app.get("/document/{document_id}", response_class=HTMLResponse)
     def detail(request: Request, document_id: int):

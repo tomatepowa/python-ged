@@ -26,7 +26,8 @@ Les fichiers ne sont **ni déplacés, ni modifiés** : l'arborescence actuelle r
 
 ## Fonctionnalités
 
-- **Recherche pendant la frappe** : les résultats se mettent à jour à chaque lettre ; le dernier mot tapé est traité comme un début de mot (`imprim` → imprimante).
+- **Recherche instantanée** : les résultats se mettent à jour à chaque lettre, sans attente ; le dernier mot tapé est traité comme un début de mot (`imprim` → imprimante).
+- **Suggestions façon moteur de recherche** : sous la barre, complétions tirées du vocabulaire des documents (« promesse v » → « promesse vente ») et documents dont le nom correspond, ouvrables directement ; navigation au clavier (↑ ↓ Entrée Échap).
 - **Recherche plein texte en français** : insensible aux accents et aux pluriels (« procédures » trouve « procedure »), opérateurs de recherche web (`"phrase exacte"`, `-exclure`, `OR`).
 - **Correction des fautes de frappe** à partir du vocabulaire réel des documents (« promese vante » → « promesse vente »), puis recherche approchante sur les noms de fichiers.
 - **Classement** : un document dont le nom ou le titre contient les mots cherchés passe devant ceux qui les citent seulement dans le texte.

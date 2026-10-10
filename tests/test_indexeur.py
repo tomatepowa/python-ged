@@ -2,7 +2,8 @@ from pathlib import Path
 
 from ged.config import charger
 from ged.indexeur import parcourir
-from ged.recherche import Filtres, requete_saisie, sous_titre, surligner
+from ged.extraits import construire_motif, extraire
+from ged.recherche import Filtres, requete_saisie, sous_titre
 
 
 def creer(racine: Path, *chemins: str) -> None:
@@ -49,11 +50,19 @@ def test_lien_de_pagination():
     assert f.lien(3) == "q=vpn+bloqu%C3%A9&pole=Infra&tag=3&tag=7&page=3"
 
 
-def test_surligner_echappe_le_html():
-    resultat = surligner("<script>alert(1)</script> \x02imprimante\x03")
+def test_extrait_echappe_le_html_et_surligne_sans_accents():
+    texte = "<script>alert(1)</script> Les procédures de redémarrage du spouleur. " + "bla " * 200 + "Fin."
+    resultat = extraire(texte, construire_motif(["procedure", "redemarr"]))
     assert "<script>" not in resultat
     assert "&lt;script&gt;" in resultat
-    assert "<mark>imprimante</mark>" in resultat
+    # Racine du mot : trouve le pluriel et les accents
+    assert "<mark>procédures</mark>" in resultat
+    assert "<mark>redémarrage</mark>" in resultat
+
+
+def test_extrait_sans_correspondance_donne_le_debut():
+    assert str(extraire("Début du texte. " * 50, construire_motif(["absent"]))).startswith("Début du texte.")
+    assert extraire(None, None) == ""
 
 
 def test_config_exemple_valide():

@@ -4,8 +4,12 @@
 {% block contenu %}
 <form class="recherche" id="recherche" method="get" action="/">
   <div class="barre">
-    <input type="search" name="q" value="{{ filtres.q }}" autocomplete="off" autofocus
-           placeholder="Rechercher : imprimante, identitovigilance, &quot;message d'erreur&quot;…">
+    <div class="champ">
+      <input type="search" name="q" value="{{ filtres.q }}" autocomplete="off" autofocus spellcheck="false"
+             role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggestions"
+             placeholder="Rechercher : imprimante, identitovigilance, &quot;message d'erreur&quot;…">
+      <div id="suggestions" class="suggestions" role="listbox" hidden></div>
+    </div>
     <button type="submit">Rechercher</button>
   </div>
 
@@ -47,61 +51,5 @@
   </div>
 </form>
 
-<script>
-  // Recherche pendant la frappe : chaque modification relance la recherche (après une courte pause
-  // pour ne pas envoyer une requête par lettre quand on tape vite). Sans JavaScript, le formulaire
-  // fonctionne normalement avec le bouton "Rechercher".
-  (() => {
-    const formulaire = document.getElementById('recherche');
-    const zone = document.getElementById('resultats');
-    const champ = formulaire.elements.q;
-    let minuterie = null;
-    let enCours = null;
-
-    function parametres() {
-      const p = new URLSearchParams(new FormData(formulaire));
-      for (const [cle, valeur] of [...p.entries()]) if (!valeur) p.delete(cle);
-      return p;
-    }
-
-    async function chercher(p = parametres(), defiler = false) {
-      if (enCours) enCours.abort();
-      enCours = new AbortController();
-      zone.classList.add('chargement');
-      try {
-        const reponse = await fetch('/resultats?' + p, { signal: enCours.signal });
-        if (!reponse.ok) throw new Error(reponse.status);
-        zone.innerHTML = await reponse.text();
-        const qs = p.toString();
-        history.replaceState(null, '', qs ? '/?' + qs : '/');
-        document.title = (p.get('q') ? p.get('q') + ' – ' : '') + 'GED DSI';
-        if (defiler) zone.scrollIntoView({ behavior: 'smooth' });
-      } catch (e) {
-        if (e.name !== 'AbortError') formulaire.submit();
-      } finally {
-        zone.classList.remove('chargement');
-      }
-    }
-
-    champ.addEventListener('input', () => {
-      clearTimeout(minuterie);
-      minuterie = setTimeout(() => chercher(), 120);
-    });
-    formulaire.addEventListener('change', (e) => { if (e.target !== champ) chercher(); });
-    formulaire.addEventListener('submit', (e) => { e.preventDefault(); clearTimeout(minuterie); chercher(); });
-    zone.addEventListener('click', (e) => {
-      const lien = e.target.closest('a[data-page]');
-      if (!lien) return;
-      e.preventDefault();
-      chercher(new URLSearchParams(lien.search), true);
-    });
-    document.getElementById('effacer-filtres').addEventListener('click', () => {
-      formulaire.querySelectorAll('select').forEach((s) => { s.value = ''; });
-      formulaire.querySelectorAll('input[type=checkbox]').forEach((c) => { c.checked = false; });
-      chercher();
-    });
-    // Place le curseur en fin de texte (retour sur une recherche existante)
-    champ.setSelectionRange(champ.value.length, champ.value.length);
-  })();
-</script>
+<script src="{{ url_for('static', path='recherche.js') }}"></script>
 {% endblock %}

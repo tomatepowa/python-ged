@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import email
 import email.policy
+import os
 import re
 import subprocess
 import tempfile
@@ -273,6 +274,11 @@ def _eml(chemin: Path) -> Resultat:
 # --- Anciens formats via LibreOffice ---------------------------------------------
 
 
+# Sans ces variables, LibreOffice interroge le spouleur Windows à chaque démarrage pour connaître
+# l'imprimante par défaut (notification "connexion à l'imprimante"). Inutile pour une conversion.
+_ENV_LIBREOFFICE = {**os.environ, "SAL_DISABLE_PRINTERLIST": "1", "SAL_DISABLE_DEFAULTPRINTER": "1"}
+
+
 def _conversion(chemin: Path, soffice: str | None) -> Resultat:
     if not soffice or not Path(soffice).is_file():
         return Resultat(statut="non_supporte", erreur="Ancien format : LibreOffice non configuré")
@@ -283,7 +289,7 @@ def _conversion(chemin: Path, soffice: str | None) -> Resultat:
         subprocess.run(
             [soffice, f"-env:UserInstallation={profil}", "--headless", "--norestore",
              "--convert-to", "pdf", "--outdir", dossier, str(chemin)],
-            check=True, capture_output=True, timeout=180,
+            check=True, capture_output=True, timeout=180, env=_ENV_LIBREOFFICE,
         )
         pdf = Path(dossier, chemin.stem + ".pdf")
         if not pdf.is_file():

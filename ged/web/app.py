@@ -34,6 +34,9 @@ def taille_lisible(octets: int) -> str:
 
 
 templates.env.filters["taille"] = taille_lisible
+# Version des fichiers statiques, ajoutée à leur URL (?v=...) : après une mise à jour, les
+# navigateurs rechargent le CSS et le JavaScript au lieu de garder l'ancienne version en cache
+templates.env.globals["version_statique"] = max(int(f.stat().st_mtime) for f in (ICI / "static").iterdir())
 templates.env.filters["date"] = lambda d: d.astimezone().strftime("%d/%m/%Y") if d else ""
 
 

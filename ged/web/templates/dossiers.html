@@ -7,11 +7,11 @@
     {% set deplie = source_id == source.id and (chemin == enfant.chemin or chemin.startswith(enfant.chemin ~ "\\")) %}
     {% if enfant.enfants %}
     <details {% if deplie %}open{% endif %}>
-      <summary><a href="/dossiers?source={{ source_id }}&chemin={{ enfant.chemin | urlencode }}" {% if courant %}aria-current="page"{% endif %}>📁 {{ enfant.nom }}</a></summary>
+      <summary><a href="/dossiers?source={{ source_id }}&chemin={{ enfant.chemin | urlencode }}" title="{{ enfant.nom }}" {% if courant %}aria-current="page"{% endif %}>📁 {{ enfant.nom }}</a></summary>
       <div class="branche">{{ arbre(enfant, source_id) }}</div>
     </details>
     {% else %}
-    <div class="feuille"><a href="/dossiers?source={{ source_id }}&chemin={{ enfant.chemin | urlencode }}" {% if courant %}aria-current="page"{% endif %}>📁 {{ enfant.nom }}</a></div>
+    <div class="feuille"><a href="/dossiers?source={{ source_id }}&chemin={{ enfant.chemin | urlencode }}" title="{{ enfant.nom }}" {% if courant %}aria-current="page"{% endif %}>📁 {{ enfant.nom }}</a></div>
     {% endif %}
   {% endfor %}
 {% endmacro %}
@@ -30,7 +30,7 @@
   <aside class="arbre" aria-label="Arborescence">
     {% for s in sources %}
     <details {% if s.id == source.id %}open{% endif %}>
-      <summary><a href="/dossiers?source={{ s.id }}" {% if s.id == source.id and not chemin %}aria-current="page"{% endif %}>🗄️ {{ s.nom }}</a></summary>
+      <summary><a href="/dossiers?source={{ s.id }}" title="{{ s.nom }}" {% if s.id == source.id and not chemin %}aria-current="page"{% endif %}>🗄️ {{ s.nom }}</a></summary>
       <div class="branche">{{ arbre(s.arbre, s.id) }}</div>
     </details>
     {% endfor %}
@@ -100,5 +100,21 @@
     </div>
   </section>
 </div>
+<script>
+  // Arbre : largeur mémorisée (préférence de ce navigateur) et dossier courant rendu visible
+  (() => {
+    const arbre = document.querySelector('.arbre');
+    try {
+      const largeur = localStorage.getItem('ged.largeurArbre');
+      if (largeur) arbre.style.width = largeur;
+      new ResizeObserver(() => {
+        try { localStorage.setItem('ged.largeurArbre', arbre.style.width || arbre.offsetWidth + 'px'); } catch (e) {}
+      }).observe(arbre);
+    } catch (e) { /* stockage indisponible : largeur par défaut */ }
+    // Défile l'arbre seul (scrollIntoView ferait aussi défiler toute la page)
+    const courant = arbre.querySelector('[aria-current="page"]');
+    if (courant) arbre.scrollTop = courant.offsetTop - arbre.clientHeight / 2;
+  })();
+</script>
 {% endif %}
 {% endblock %}

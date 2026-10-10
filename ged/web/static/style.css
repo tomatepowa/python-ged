@@ -268,22 +268,56 @@ a.badge.tag:hover { outline: 1px solid var(--tag-texte); }
 .droits tr.refus td { background: var(--alerte); }
 
 /* Explorateur */
-.explorateur { display: grid; grid-template-columns: 280px 1fr; gap: 1.5rem; align-items: start; }
+.explorateur { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 1.5rem; align-items: start; }
 .arbre {
   position: sticky;
   top: 1rem;
+  width: 300px;
+  min-width: 200px;
+  max-width: 60vw;
   max-height: calc(100vh - 6rem);
-  overflow: auto;
-  padding: .5rem;
+  /* Jamais de défilement horizontal : les noms trop longs sont coupés avec « … » */
+  overflow-x: hidden;
+  overflow-y: auto;
+  /* Poignée en bas à droite pour élargir le panneau */
+  resize: horizontal;
+  padding: .5rem .5rem .5rem .25rem;
   background: var(--surface);
   border: 1px solid var(--bordure);
   border-radius: 10px;
   font-size: .9rem;
 }
-.arbre summary { cursor: pointer; padding: .15rem 0; white-space: nowrap; }
-.arbre .feuille { padding: .15rem 0 .15rem 1.1rem; white-space: nowrap; }
-.arbre .branche { padding-left: 1rem; border-left: 1px dotted var(--bordure); margin-left: .35rem; }
-.arbre a { color: var(--texte); text-decoration: none; }
+.arbre summary, .arbre .feuille {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: .12rem .25rem;
+  border-radius: 4px;
+}
+.arbre summary { cursor: pointer; list-style: none; }
+.arbre summary::-webkit-details-marker { display: none; }
+/* Triangle d'ouverture maison : celui du navigateur disparaît avec display: flex */
+.arbre summary::before {
+  content: "▸";
+  flex: 0 0 .9rem;
+  color: var(--texte-doux);
+  font-size: .8rem;
+  transition: transform .1s;
+}
+.arbre details[open] > summary::before { transform: rotate(90deg); }
+.arbre .feuille::before { content: ""; flex: 0 0 .9rem; }
+.arbre summary:hover, .arbre .feuille:hover { background: var(--badge); }
+/* Retrait réduit par niveau, pour que les dossiers profonds restent lisibles */
+.arbre .branche { margin-left: .4rem; padding-left: .3rem; border-left: 1px dotted var(--bordure); }
+.arbre a {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--texte);
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .arbre a:hover { color: var(--accent); }
 .arbre a[aria-current="page"] { color: var(--accent); font-weight: 700; }
 

@@ -32,7 +32,10 @@ Les fichiers ne sont **ni déplacés, ni modifiés** : l'arborescence actuelle r
 - **Correction des fautes de frappe** à partir du vocabulaire réel des documents (« promese vante » → « promesse vente »), puis recherche approchante sur les noms de fichiers.
 - **Classement** : un document dont le nom ou le titre contient les mots cherchés passe devant ceux qui les citent seulement dans le texte.
 - **Extraits surlignés** : chaque résultat montre le passage où apparaissent les mots cherchés.
-- **Filtres** : pôle (Métier, Infra, BI, ITO…), type de fichier, tags.
+- **Filtres** : pôle (Métier, Infra, BI, ITO…), type de fichier, tags (un clic sur un tag affiche tous les documents qui le portent), dossier.
+- **Explorateur** : arborescence des partages et contenu des dossiers, comme l'explorateur Windows (tri par nom, date, type, taille), avec recherche limitée à un dossier et ses sous-dossiers.
+- **Personnes** : auteur et dernier modificateur (propriétés Office / PDF), propriétaire du fichier.
+- **Droits d'accès** : utilisateurs et groupes autorisés (ou refusés) sur chaque fichier, lus dans les droits NTFS et traduits comme dans l'onglet Sécurité (Lecture, Modification, Contrôle total…), avec leur origine (héritée ou propre au fichier). Relus à chaque indexation.
 - **Tags automatiques** par dictionnaire de mots-clés ([`taxonomie.toml`](taxonomie.toml)) : logiciel, secteur (identité, soins, facturation…), type de note.
 - **Code documentaire** détecté dans l'en-tête ou le début du texte (format `DSI-INFRA-NT-001-v02`).
 - **OCR** des PDF scannés et des images (captures d'écran, photos). Les images sans texte lisible (photos, dessins, schémas) sont détectées et leur « texte » OCR, qui ne serait que du bruit, est écarté.
@@ -82,7 +85,9 @@ Tout fonctionne nativement sous Windows Server, sans Docker.
 | Fichier de langue `fra.traineddata` | pour l'OCR | à récupérer sur [tesseract-ocr/tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast) (ou `tessdata_best`, plus précis et plus lent) |
 | [LibreOffice](https://fr.libreoffice.org/) | non | uniquement pour lire les anciens `.doc`, `.xls`, `.ppt` |
 
-Le compte qui exécute l'indexation doit avoir un **accès en lecture** aux partages à indexer (idéalement un compte de service dédié, en lecture seule).
+Le compte qui exécute l'indexation doit avoir un **accès en lecture** aux partages à indexer (idéalement un compte de service dédié, en lecture seule). Pour afficher les droits d'accès, il doit aussi pouvoir lire les autorisations des fichiers (droit « Lire les autorisations », inclus dans la lecture standard) et joindre un contrôleur de domaine pour traduire les SID en noms de comptes.
+
+> Les droits d'accès sont **affichés** à titre d'information : en l'absence d'authentification, la version actuelle ne filtre pas encore les résultats selon les droits de la personne connectée (prévu avec l'authentification Active Directory).
 
 ## Installation
 
@@ -186,7 +191,10 @@ ged-dsi/
 │   ├── ocr.py           # OCR via PyMuPDF / Tesseract
 │   ├── taxonomie.py     # tags automatiques par mots-clés
 │   ├── indexeur.py      # parcours des sources, indexation incrémentale
-│   ├── recherche.py     # requêtes plein texte, filtres, extraits
+│   ├── recherche.py     # requêtes plein texte, filtres, correction, suggestions
+│   ├── extraits.py      # extraits surlignés des résultats
+│   ├── arborescence.py  # vue explorateur (arbre des dossiers, contenu d'un dossier)
+│   ├── droits.py        # propriétaire et droits NTFS (pywin32)
 │   ├── texte.py         # normalisation, détection du code documentaire
 │   └── web/             # application FastAPI, gabarits, CSS
 ├── outils/inventaire/   # script PowerShell d'état des lieux

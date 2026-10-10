@@ -27,7 +27,7 @@ def fabriquer_docx(tmp_path: Path):
                 '<?xml version="1.0"?><cp:coreProperties '
                 'xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" '
                 f'xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>{titre}</dc:title>'
-                f"<dc:creator>{auteur}</dc:creator></cp:coreProperties>",
+                f"<dc:creator>{auteur}</dc:creator><cp:lastModifiedBy>Tech B</cp:lastModifiedBy></cp:coreProperties>",
             )
             z.writestr("word/document.xml", f'<?xml version="1.0"?><w:document {W}><w:body>{corps}</w:body></w:document>')
             if entete:

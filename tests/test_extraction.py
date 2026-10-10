@@ -19,6 +19,7 @@ def test_docx_texte_entete_et_proprietes(fabriquer_docx):
     assert r.statut == "indexe"
     assert r.titre == "Débug imprimantes"
     assert r.auteur == "Tech A"
+    assert r.dernier_modificateur == "Tech B"
     assert r.code_doc == "DSI-INFRA-NT-001-v02"
     # L'en-tête, présent dans deux fichiers header, n'apparaît qu'une fois, en tête du contenu
     assert r.contenu.count("Note technique") == 1

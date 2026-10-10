@@ -191,10 +191,21 @@
   });
 
   zone.addEventListener('click', (e) => {
-    const lien = e.target.closest('a[data-page]');
-    if (!lien) return;
-    e.preventDefault();
-    chercher(new URLSearchParams(lien.search), true);
+    const page = e.target.closest('a[data-page]');
+    if (page) {
+      e.preventDefault();
+      chercher(new URLSearchParams(page.search), true);
+      return;
+    }
+    // Clic sur un tag d'un résultat : tous les documents portant ce tag (sans recharger la page)
+    const tag = e.target.closest('a[data-tag]');
+    const caseTag = tag && formulaire.querySelector(`input[name=tag][value="${tag.dataset.tag}"]`);
+    if (caseTag) {
+      e.preventDefault();
+      champ.value = '';
+      formulaire.querySelectorAll('input[name=tag]').forEach((c) => { c.checked = c === caseTag; });
+      chercher(parametres(), true);
+    }
   });
 
   document.getElementById('effacer-filtres').addEventListener('click', () => {

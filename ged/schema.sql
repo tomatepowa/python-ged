@@ -98,3 +98,12 @@ CREATE OR REPLACE FUNCTION ged_normaliser(texte text) RETURNS text
 -- Suggestions pendant la frappe : recherche dans les noms et titres de documents
 CREATE INDEX IF NOT EXISTS document_nom_norm_trgm_idx
     ON document USING gin (ged_normaliser(nom || ' ' || coalesce(titre, '')) gin_trgm_ops);
+
+-- Métadonnées de fichier (ajoutées après la première version : ALTER idempotents)
+ALTER TABLE document ADD COLUMN IF NOT EXISTS cree_le timestamptz;
+-- Dernier modificateur : propriétés Office (Windows ne le mémorise pas pour les autres fichiers)
+ALTER TABLE document ADD COLUMN IF NOT EXISTS dernier_modificateur text;
+-- Propriétaire NTFS du fichier
+ALTER TABLE document ADD COLUMN IF NOT EXISTS proprietaire text;
+-- Droits NTFS : [{"compte": "DOMAINE\groupe", "droits": "Lecture", "refus": false, "herite": true}, ...]
+ALTER TABLE document ADD COLUMN IF NOT EXISTS droits jsonb;

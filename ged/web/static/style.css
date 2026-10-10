@@ -243,3 +243,73 @@ th { color: var(--texte-doux); font-weight: 600; }
   font-size: .9rem;
   text-decoration: underline;
 }
+
+/* Fil d'Ariane */
+.ariane { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; margin-bottom: 1rem; font-size: .95rem; }
+.ariane a { text-decoration: none; }
+.ariane a:hover { text-decoration: underline; }
+.ariane .separateur { color: var(--texte-doux); }
+
+/* Chemin cliquable dans les résultats */
+a.chemin { text-decoration: none; }
+a.chemin:hover { color: var(--accent); text-decoration: underline; }
+a.badge.tag { text-decoration: none; }
+a.badge.tag:hover { outline: 1px solid var(--tag-texte); }
+
+.filtre-dossier { margin: -.75rem 0 1.25rem; color: var(--texte-doux); font-size: .92rem; }
+.filtre-dossier a { margin-left: .5rem; }
+
+/* Fiche document */
+.colonnes { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+.colonnes h2, .fiche section h2 { font-size: 1.1rem; margin-bottom: .5rem; }
+.colonnes .proprietes { grid-template-columns: 120px 1fr; margin-top: .5rem; }
+.petit { font-size: .82rem; }
+.droits { margin-bottom: .5rem; }
+.droits tr.refus td { background: var(--alerte); }
+
+/* Explorateur */
+.explorateur { display: grid; grid-template-columns: 280px 1fr; gap: 1.5rem; align-items: start; }
+.arbre {
+  position: sticky;
+  top: 1rem;
+  max-height: calc(100vh - 6rem);
+  overflow: auto;
+  padding: .5rem;
+  background: var(--surface);
+  border: 1px solid var(--bordure);
+  border-radius: 10px;
+  font-size: .9rem;
+}
+.arbre summary { cursor: pointer; padding: .15rem 0; white-space: nowrap; }
+.arbre .feuille { padding: .15rem 0 .15rem 1.1rem; white-space: nowrap; }
+.arbre .branche { padding-left: 1rem; border-left: 1px dotted var(--bordure); margin-left: .35rem; }
+.arbre a { color: var(--texte); text-decoration: none; }
+.arbre a:hover { color: var(--accent); }
+.arbre a[aria-current="page"] { color: var(--accent); font-weight: 700; }
+
+.recherche-dossier { display: flex; gap: .5rem; margin-bottom: 1rem; }
+.recherche-dossier input[type="search"] {
+  flex: 1;
+  min-width: 0;
+  padding: .55rem .8rem;
+  border: 1px solid var(--bordure);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--texte);
+  font: inherit;
+}
+.tableau-defilant { overflow-x: auto; }
+.liste-fichiers td, .liste-fichiers th { padding: .45rem .75rem; white-space: nowrap; }
+.liste-fichiers td:first-child { white-space: normal; }
+.liste-fichiers th a { color: var(--texte-doux); text-decoration: none; }
+.liste-fichiers th a:hover { color: var(--accent); }
+.liste-fichiers td a { text-decoration: none; }
+.liste-fichiers td a:hover { text-decoration: underline; }
+.liste-fichiers .badge { margin-left: .3rem; font-size: .72rem; }
+.liste-fichiers tbody tr:hover { background: var(--badge); }
+.ligne-dossier td:first-child a { font-weight: 600; }
+
+@media (max-width: 900px) {
+  .explorateur, .colonnes { grid-template-columns: 1fr; }
+  .arbre { position: static; max-height: 40vh; }
+}

@@ -49,6 +49,7 @@ NS_W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 NS_A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
 NS_S = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 NS_DC = "{http://purl.org/dc/elements/1.1/}"
+NS_CP = "{http://schemas.openxmlformats.org/package/2006/metadata/core-properties}"
 NS_TEXT_ODF = "{urn:oasis:names:tc:opendocument:xmlns:text:1.0}"
 
 
@@ -60,6 +61,7 @@ class Resultat:
     methode: str | None = None
     titre: str | None = None
     auteur: str | None = None
+    dernier_modificateur: str | None = None
     nb_pages: int | None = None
     code_doc: str | None = None
     erreur: str | None = None
@@ -111,14 +113,21 @@ def _lire_xml(archive: zipfile.ZipFile, nom: str) -> ElementTree.Element | None:
         return None
 
 
-def _proprietes(archive: zipfile.ZipFile) -> tuple[str | None, str | None]:
-    """Titre et auteur depuis docProps/core.xml."""
+def _proprietes(archive: zipfile.ZipFile) -> dict:
+    """Titre, auteur et dernier modificateur depuis docProps/core.xml."""
     core = _lire_xml(archive, "docProps/core.xml")
     if core is None:
-        return None, None
-    titre = core.findtext(f"{NS_DC}title") or None
-    auteur = core.findtext(f"{NS_DC}creator") or None
-    return (titre.strip() if titre else None), (auteur.strip() if auteur else None)
+        return {}
+
+    def valeur(balise: str) -> str | None:
+        texte = core.findtext(balise)
+        return (texte.strip() or None) if texte else None
+
+    return {
+        "titre": valeur(f"{NS_DC}title"),
+        "auteur": valeur(f"{NS_DC}creator"),
+        "dernier_modificateur": valeur(f"{NS_CP}lastModifiedBy"),
+    }
 
 
 def _paragraphes_word(racine: ElementTree.Element) -> list[str]:
@@ -146,7 +155,7 @@ def _numero(nom: str) -> int:
 
 def _docx(chemin: Path) -> Resultat:
     with zipfile.ZipFile(chemin) as archive:
-        titre, auteur = _proprietes(archive)
+        proprietes = _proprietes(archive)
         noms = archive.namelist()
         entetes = sorted((n for n in noms if re.match(r"word/(header|footer)\d*\.xml$", n)), key=_numero)
 
@@ -161,12 +170,12 @@ def _docx(chemin: Path) -> Resultat:
 
     # L'en-tête porte souvent le code et la version : on le place en tête du contenu
     contenu = "\n".join(_dedoublonner(texte_entetes) + paragraphes)
-    return Resultat(statut="indexe", contenu=contenu, methode="texte", titre=titre, auteur=auteur)
+    return Resultat(statut="indexe", contenu=contenu, methode="texte", **proprietes)
 
 
 def _xlsx(chemin: Path) -> Resultat:
     with zipfile.ZipFile(chemin) as archive:
-        titre, auteur = _proprietes(archive)
+        proprietes = _proprietes(archive)
         morceaux = []
         classeur = _lire_xml(archive, "xl/workbook.xml")
         if classeur is not None:
@@ -177,12 +186,12 @@ def _xlsx(chemin: Path) -> Resultat:
                 texte = "".join(t.text or "" for t in si.iter(f"{NS_S}t")).strip()
                 if texte:
                     morceaux.append(texte)
-    return Resultat(statut="indexe", contenu="\n".join(morceaux), methode="texte", titre=titre, auteur=auteur)
+    return Resultat(statut="indexe", contenu="\n".join(morceaux), methode="texte", **proprietes)
 
 
 def _pptx(chemin: Path) -> Resultat:
     with zipfile.ZipFile(chemin) as archive:
-        titre, auteur = _proprietes(archive)
+        proprietes = _proprietes(archive)
         diapos = sorted(
             (n for n in archive.namelist() if re.match(r"ppt/(slides/slide|notesSlides/notesSlide)\d+\.xml$", n)),
             key=lambda n: ("notes" in n, _numero(n)),
@@ -197,7 +206,7 @@ def _pptx(chemin: Path) -> Resultat:
                 if texte:
                     morceaux.append(texte)
     return Resultat(
-        statut="indexe", contenu="\n".join(morceaux), methode="texte", titre=titre, auteur=auteur,
+        statut="indexe", contenu="\n".join(morceaux), methode="texte", **proprietes,
         nb_pages=sum(1 for n in diapos if "notes" not in n),
     )
 

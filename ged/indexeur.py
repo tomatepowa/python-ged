@@ -16,8 +16,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import psycopg
+from psycopg.types.json import Jsonb
 
 from ged.config import Config, Source
+from ged.droits import lire_securite
 from ged.extraction import Resultat, extraire, famille
 from ged.ocr import ocr, texte_exploitable
 from ged.taxonomie import Taxonomie
@@ -159,11 +161,21 @@ class Indexeur:
         modifie_le = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
 
         existant = self.conn.execute(
-            "SELECT id, taille, modifie_le, empreinte, statut, methode, contenu, code_doc, nb_pages "
-            "FROM document WHERE chemin = %s",
+            "SELECT id, taille, modifie_le, empreinte, statut, methode, contenu, code_doc, nb_pages, "
+            "proprietaire, droits FROM document WHERE chemin = %s",
             (str(chemin),),
         ).fetchone()
+        # Les droits sont relus à chaque passage : les modifier ne change pas la date du fichier
+        proprietaire, droits = lire_securite(chemin)
+
         if existant and not forcer and existant["taille"] == stat.st_size and existant["modifie_le"] == modifie_le:
+            if existant["proprietaire"] != proprietaire or existant["droits"] != droits:
+                self.conn.execute(
+                    "UPDATE document SET vu_le = now(), supprime_le = NULL, proprietaire = %s, droits = %s "
+                    "WHERE id = %s",
+                    (proprietaire, Jsonb(droits) if droits is not None else None, existant["id"]),
+                )
+                return "droits_modifies"
             self.conn.execute(
                 "UPDATE document SET vu_le = now(), supprime_le = NULL WHERE id = %s", (existant["id"],)
             )
@@ -188,17 +200,21 @@ class Indexeur:
         ligne = self.conn.execute(
             """
             INSERT INTO document (source_id, chemin, chemin_relatif, nom, extension, famille, taille,
-                                  modifie_le, empreinte, statut, erreur, methode, titre, auteur,
+                                  cree_le, modifie_le, empreinte, statut, erreur, methode, titre, auteur,
+                                  dernier_modificateur, proprietaire, droits,
                                   code_doc, nb_pages, contenu, vu_le, indexe_le, supprime_le)
             VALUES (%(source_id)s, %(chemin)s, %(chemin_relatif)s, %(nom)s, %(extension)s, %(famille)s,
-                    %(taille)s, %(modifie_le)s, %(empreinte)s, %(statut)s, %(erreur)s, %(methode)s,
-                    %(titre)s, %(auteur)s, %(code_doc)s, %(nb_pages)s, %(contenu)s, now(), now(), NULL)
+                    %(taille)s, %(cree_le)s, %(modifie_le)s, %(empreinte)s, %(statut)s, %(erreur)s, %(methode)s,
+                    %(titre)s, %(auteur)s, %(dernier_modificateur)s, %(proprietaire)s, %(droits)s,
+                    %(code_doc)s, %(nb_pages)s, %(contenu)s, now(), now(), NULL)
             ON CONFLICT (chemin) DO UPDATE SET
                 source_id = EXCLUDED.source_id, chemin_relatif = EXCLUDED.chemin_relatif,
                 nom = EXCLUDED.nom, extension = EXCLUDED.extension, famille = EXCLUDED.famille,
-                taille = EXCLUDED.taille, modifie_le = EXCLUDED.modifie_le, empreinte = EXCLUDED.empreinte,
-                statut = EXCLUDED.statut, erreur = EXCLUDED.erreur, methode = EXCLUDED.methode,
-                titre = EXCLUDED.titre, auteur = EXCLUDED.auteur, code_doc = EXCLUDED.code_doc,
+                taille = EXCLUDED.taille, cree_le = EXCLUDED.cree_le, modifie_le = EXCLUDED.modifie_le,
+                empreinte = EXCLUDED.empreinte, statut = EXCLUDED.statut, erreur = EXCLUDED.erreur,
+                methode = EXCLUDED.methode, titre = EXCLUDED.titre, auteur = EXCLUDED.auteur,
+                dernier_modificateur = EXCLUDED.dernier_modificateur, proprietaire = EXCLUDED.proprietaire,
+                droits = EXCLUDED.droits, code_doc = EXCLUDED.code_doc,
                 nb_pages = EXCLUDED.nb_pages, contenu = EXCLUDED.contenu,
                 vu_le = now(), indexe_le = now(), supprime_le = NULL
             RETURNING id
@@ -211,6 +227,8 @@ class Indexeur:
                 "extension": chemin.suffix.lower(),
                 "famille": famille(chemin.suffix),
                 "taille": stat.st_size,
+                # Sous Windows, st_ctime est la date de création du fichier
+                "cree_le": datetime.fromtimestamp(stat.st_ctime, tz=timezone.utc),
                 "modifie_le": modifie_le,
                 "empreinte": signature,
                 "statut": resultat.statut,
@@ -218,6 +236,9 @@ class Indexeur:
                 "methode": resultat.methode,
                 "titre": resultat.titre,
                 "auteur": resultat.auteur,
+                "dernier_modificateur": resultat.dernier_modificateur,
+                "proprietaire": proprietaire,
+                "droits": Jsonb(droits) if droits is not None else None,
                 "code_doc": resultat.code_doc,
                 "nb_pages": resultat.nb_pages,
                 # PostgreSQL refuse le caractère NUL dans un texte

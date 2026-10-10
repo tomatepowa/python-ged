@@ -90,6 +90,7 @@ def _afficher_bilan(titre: str, bilan) -> None:
         "non_supporte": "formats non lus",
         "erreur": "erreurs de lecture",
         "inchange": "inchangés (non relus)",
+        "droits_modifies": "inchangés, droits d'accès mis à jour",
         "supprime": "disparus de la source",
         "illisible": "illisibles (droits ?)",
         "sources_inaccessibles": "sources inaccessibles",

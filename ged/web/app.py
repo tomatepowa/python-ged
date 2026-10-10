@@ -15,6 +15,7 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from ged import config as configuration
+from ged.arborescence import dossier_parent, fichiers, fil_ariane, sources, trouver
 from ged.recherche import PAR_PAGE, Filtres, facettes, rechercher, statistiques, suggerer
 
 ICI = Path(__file__).parent
@@ -34,6 +35,15 @@ def taille_lisible(octets: int) -> str:
 
 templates.env.filters["taille"] = taille_lisible
 templates.env.filters["date"] = lambda d: d.astimezone().strftime("%d/%m/%Y") if d else ""
+
+
+def libelle_du_dossier(conn, filtres: Filtres) -> str | None:
+    """« Source › dossier » du filtre dossier, pour l'afficher au-dessus des résultats."""
+    cible = filtres.dossier_cible()
+    if not cible:
+        return None
+    source = conn.execute("SELECT nom FROM source WHERE id = %s", (cible[0],)).fetchone()
+    return " › ".join(filter(None, [source["nom"] if source else "?", *cible[1].split("\\")]))
 
 
 def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
@@ -64,19 +74,21 @@ def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
         pole: str = "",
         famille: str = "",
         tag: Annotated[list[int], Query()] = [],
+        dossier: str = "",
         page: int = 1,
     ):
-        filtres = Filtres(q=q, pole=pole, famille=famille, tags=tag, page=max(page, 1))
+        filtres = Filtres(q=q, pole=pole, famille=famille, tags=tag, dossier=dossier, page=max(page, 1))
         with pool.connection() as conn:
             contexte = contexte_resultats(filtres, conn)
             choix = facettes(conn)
+            libelle_dossier = libelle_du_dossier(conn, filtres)
         tags_par_categorie: dict[str, list[dict]] = {}
         for t in choix["tags"]:
             tags_par_categorie.setdefault(t["categorie"], []).append(t)
         return templates.TemplateResponse(
             request,
             "recherche.html",
-            {**contexte, "choix": choix, "tags_par_categorie": tags_par_categorie},
+            {**contexte, "choix": choix, "tags_par_categorie": tags_par_categorie, "libelle_dossier": libelle_dossier},
         )
 
     @app.get("/resultats", response_class=HTMLResponse)
@@ -86,10 +98,11 @@ def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
         pole: str = "",
         famille: str = "",
         tag: Annotated[list[int], Query()] = [],
+        dossier: str = "",
         page: int = 1,
     ):
         """Fragment HTML de la liste de résultats, pour la recherche pendant la frappe."""
-        filtres = Filtres(q=q, pole=pole, famille=famille, tags=tag, page=max(page, 1))
+        filtres = Filtres(q=q, pole=pole, famille=famille, tags=tag, dossier=dossier, page=max(page, 1))
         with pool.connection() as conn:
             contexte = contexte_resultats(filtres, conn)
         return templates.TemplateResponse(request, "_resultats.html", contexte)
@@ -111,7 +124,7 @@ def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
             if not doc:
                 raise HTTPException(404, "Document inconnu")
             tags = conn.execute(
-                "SELECT t.categorie, t.libelle, dt.origine FROM document_tag dt JOIN tag t ON t.id = dt.tag_id "
+                "SELECT t.id, t.categorie, t.libelle, dt.origine FROM document_tag dt JOIN tag t ON t.id = dt.tag_id "
                 "WHERE dt.document_id = %s ORDER BY t.categorie, t.libelle",
                 (document_id,),
             ).fetchall()
@@ -120,8 +133,31 @@ def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
                 "WHERE empreinte = %s AND id <> %s AND supprime_le IS NULL ORDER BY chemin_relatif",
                 (doc["empreinte"], document_id),
             ).fetchall() if doc["empreinte"] else []
+        dossier = dossier_parent(doc["chemin_relatif"])
         return templates.TemplateResponse(
-            request, "document.html", {"doc": doc, "tags": tags, "doublons": doublons}
+            request,
+            "document.html",
+            {"doc": doc, "tags": tags, "doublons": doublons, "dossier": dossier, "ariane": fil_ariane(dossier)},
+        )
+
+    @app.get("/dossiers", response_class=HTMLResponse)
+    def dossiers(request: Request, source: int | None = None, chemin: str = "", tri: str = "nom", ordre: str = "asc"):
+        """Vue explorateur : arborescence à gauche, contenu du dossier à droite."""
+        chemin = chemin.strip("\\")
+        with pool.connection() as conn:
+            toutes = sources(conn)
+            courante = next((s for s in toutes if s["id"] == source), toutes[0] if toutes else None)
+            dossier = trouver(courante["arbre"], chemin) if courante else None
+            if courante and dossier is None:
+                raise HTTPException(404, "Dossier inconnu (ou sans document indexé)")
+            contenu = fichiers(conn, courante["id"], chemin, tri, ordre == "desc") if courante else []
+        return templates.TemplateResponse(
+            request,
+            "dossiers.html",
+            {
+                "sources": toutes, "source": courante, "dossier": dossier, "chemin": chemin,
+                "ariane": fil_ariane(chemin), "fichiers": contenu, "tri": tri, "ordre": ordre,
+            },
         )
 
     @app.get("/document/{document_id}/fichier")

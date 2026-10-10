@@ -9,6 +9,7 @@ from urllib.parse import urlencode
 
 import psycopg
 
+from ged.arborescence import dossier_parent
 from ged.extraits import construire_motif, extraire
 from ged.texte import normaliser
 
@@ -23,14 +24,21 @@ class Filtres:
     pole: str = ""
     famille: str = ""
     tags: list[int] = field(default_factory=list)
+    # Limite la recherche à un dossier et ses sous-dossiers : "<id source>:<chemin relatif>"
+    dossier: str = ""
     page: int = 1
 
     def lien(self, page: int | None = None) -> str:
         """Query string de cette recherche (pour la pagination et l'URL partageable)."""
-        parametres = [("q", self.q), ("pole", self.pole), ("famille", self.famille)]
+        parametres = [("q", self.q), ("pole", self.pole), ("famille", self.famille), ("dossier", self.dossier)]
         parametres += [("tag", t) for t in self.tags]
         parametres.append(("page", page or self.page))
         return urlencode([(k, v) for k, v in parametres if v not in ("", None)])
+
+    def dossier_cible(self) -> tuple[int, str] | None:
+        """(id de la source, chemin relatif) du filtre dossier, None s'il est absent ou invalide."""
+        source, _, chemin = self.dossier.partition(":")
+        return (int(source), chemin.strip("\\")) if source.isdigit() else None
 
 
 @dataclass
@@ -198,6 +206,10 @@ def _executer(
         )
         parametres["tags"] = filtres.tags
         parametres["nb_tags"] = len(set(filtres.tags))
+    if cible := filtres.dossier_cible():
+        conditions.append("d.source_id = %(dossier_source)s AND starts_with(d.chemin_relatif, %(dossier_prefixe)s)")
+        parametres["dossier_source"] = cible[0]
+        parametres["dossier_prefixe"] = cible[1] + "\\" if cible[1] else ""
 
     # En deux temps : 1) classer tous les documents trouvés (rapide, index GIN), 2) ne lire le
     # texte et les tags que pour la page affichée. L'extrait surligné est fabriqué en Python
@@ -211,10 +223,11 @@ def _executer(
             ORDER BY rang DESC, d.modifie_le DESC
             LIMIT %(limite)s OFFSET %(decalage)s
         )
-        SELECT d.id, d.nom, d.titre, d.chemin, d.chemin_relatif, d.famille, d.extension, d.statut,
-               d.code_doc, d.modifie_le, d.taille, s.pole, page.rang, page.total,
+        SELECT d.id, d.source_id, d.nom, d.titre, d.chemin, d.chemin_relatif, d.famille, d.extension,
+               d.statut, d.code_doc, d.modifie_le, d.taille, d.auteur, d.dernier_modificateur, s.pole,
+               page.rang, page.total,
                left(coalesce(d.contenu, ''), 60000) AS contenu,
-               coalesce((SELECT json_agg(json_build_object('categorie', t.categorie, 'libelle', t.libelle)
+               coalesce((SELECT json_agg(json_build_object('id', t.id, 'categorie', t.categorie, 'libelle', t.libelle)
                                          ORDER BY t.categorie, t.libelle)
                          FROM document_tag dt JOIN tag t ON t.id = dt.tag_id
                          WHERE dt.document_id = d.id), '[]') AS tags
@@ -228,6 +241,7 @@ def _executer(
     for ligne in lignes:
         ligne["extrait"] = extraire(ligne.pop("contenu"), motif)
         ligne["sous_titre"] = sous_titre(ligne["titre"], ligne["nom"])
+        ligne["dossier"] = dossier_parent(ligne["chemin_relatif"])
     total = lignes[0]["total"] if lignes else 0
     return Resultats(lignes, total, mode)
 

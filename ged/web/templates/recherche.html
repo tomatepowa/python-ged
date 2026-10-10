@@ -12,6 +12,11 @@
     </div>
     <button type="submit">Rechercher</button>
   </div>
+  {% if filtres.dossier %}
+  <input type="hidden" name="dossier" value="{{ filtres.dossier }}">
+  <p class="filtre-dossier">Recherche limitée au dossier <strong>{{ libelle_dossier }}</strong>
+    <a href="/?q={{ filtres.q | urlencode }}" title="Chercher partout">✕ chercher partout</a></p>
+  {% endif %}
 
   <div class="mise-en-page">
     <aside class="filtres">

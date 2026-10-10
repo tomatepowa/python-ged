@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titre %}GED DSI{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+</head>
+<body>
+  <header class="bandeau">
+    <a class="logo" href="/">GED <span>DSI</span></a>
+    <nav>
+      <a href="/">Recherche</a>
+      <a href="/stats">État de l'index</a>
+    </nav>
+  </header>
+  <main>
+    {% block contenu %}{% endblock %}
+  </main>
+  <script>
+    // Copie du chemin réseau, à coller dans l'explorateur Windows
+    document.addEventListener('click', async (e) => {
+      const bouton = e.target.closest('[data-copier]');
+      if (!bouton) return;
+      try {
+        await navigator.clipboard.writeText(bouton.dataset.copier);
+        const libelle = bouton.textContent;
+        bouton.textContent = 'Copié ✓';
+        setTimeout(() => { bouton.textContent = libelle; }, 1500);
+      } catch { window.prompt('Copiez le chemin :', bouton.dataset.copier); }
+    });
+  </script>
+</body>
+</html>

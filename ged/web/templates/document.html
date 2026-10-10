@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block titre %}{{ doc.titre or doc.nom }} – GED DSI{% endblock %}
+
+{% block contenu %}
+<p><a href="javascript:history.back()">← Retour aux résultats</a></p>
+
+<article class="fiche">
+  <h1>{{ doc.titre or doc.nom }}</h1>
+  <div class="actions">
+    <a class="bouton" href="/document/{{ doc.id }}/fichier" target="_blank">Ouvrir le fichier</a>
+    <button type="button" class="bouton secondaire" data-copier="{{ doc.chemin }}">Copier le chemin</button>
+  </div>
+
+  {% if doc.supprime_le %}
+  <p class="avertissement">Ce fichier n'existe plus dans la source depuis le {{ doc.supprime_le | date }}.</p>
+  {% endif %}
+
+  <dl class="proprietes">
+    <dt>Fichier</dt><dd>{{ doc.nom }}</dd>
+    <dt>Emplacement</dt><dd class="chemin">{{ doc.chemin }}</dd>
+    <dt>Pôle</dt><dd>{{ doc.pole }} ({{ doc.source }})</dd>
+    {% if doc.code_doc %}<dt>Code</dt><dd>{{ doc.code_doc }}</dd>{% endif %}
+    {% if doc.auteur %}<dt>Auteur</dt><dd>{{ doc.auteur }}</dd>{% endif %}
+    <dt>Modifié le</dt><dd>{{ doc.modifie_le | date }}</dd>
+    <dt>Taille</dt><dd>{{ doc.taille | taille }}{% if doc.nb_pages %} — {{ doc.nb_pages }} page{{ "s" if doc.nb_pages > 1 }}{% endif %}</dd>
+    <dt>Lecture</dt>
+    <dd>
+      {% if doc.statut == "indexe" %}Texte indexé ({{ {"texte": "lecture directe", "ocr": "OCR", "conversion": "conversion LibreOffice"}.get(doc.methode, doc.methode) }})
+      {% elif doc.statut == "ocr_requis" %}Document scanné : OCR en attente
+      {% elif doc.statut == "non_supporte" %}Contenu non lu (format non pris en charge){% if doc.erreur %} — {{ doc.erreur }}{% endif %}
+      {% else %}Erreur de lecture : {{ doc.erreur }}{% endif %}
+    </dd>
+    <dt>Tags</dt>
+    <dd>
+      {% for t in tags %}<span class="badge tag" title="{{ t.categorie }} – {{ 'proposé automatiquement' if t.origine == 'auto' else 'posé manuellement' }}">{{ t.libelle }}</span>{% else %}<span class="note">aucun</span>{% endfor %}
+    </dd>
+  </dl>
+
+  {% if doublons %}
+  <section class="doublons">
+    <h2>Copies identiques ailleurs</h2>
+    <ul>{% for d in doublons %}<li><a href="/document/{{ d.id }}">{{ d.chemin_relatif }}</a></li>{% endfor %}</ul>
+  </section>
+  {% endif %}
+
+  {% if doc.contenu %}
+  <section>
+    <h2>Texte extrait</h2>
+    <pre class="contenu">{{ doc.contenu[:20000] }}{% if doc.contenu | length > 20000 %}
+
+[… texte tronqué, ouvrez le fichier pour la suite]{% endif %}</pre>
+  </section>
+  {% endif %}
+</article>
+{% endblock %}

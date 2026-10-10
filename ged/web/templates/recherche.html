@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block titre %}{% if filtres.q %}{{ filtres.q }} – {% endif %}GED DSI{% endblock %}
+
+{% block contenu %}
+<form class="recherche" method="get" action="/">
+  <div class="barre">
+    <input type="search" name="q" value="{{ filtres.q }}" placeholder="Rechercher : imprimante, identitovigilance, &quot;message d'erreur&quot;…" autofocus>
+    <button type="submit">Rechercher</button>
+  </div>
+
+  <div class="mise-en-page">
+    <aside class="filtres">
+      <label>Pôle
+        <select name="pole" onchange="this.form.submit()">
+          <option value="">Tous</option>
+          {% for p in choix.poles %}
+          <option value="{{ p.valeur }}" {% if p.valeur == filtres.pole %}selected{% endif %}>{{ p.valeur }} ({{ p.nb }})</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Type de fichier
+        <select name="famille" onchange="this.form.submit()">
+          <option value="">Tous</option>
+          {% for f in choix.familles %}
+          <option value="{{ f.valeur }}" {% if f.valeur == filtres.famille %}selected{% endif %}>{{ f.valeur }} ({{ f.nb }})</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% for categorie, tags in tags_par_categorie.items() %}
+      <fieldset>
+        <legend>{{ categorie | capitalize }}</legend>
+        {% for t in tags %}
+        <label class="case">
+          <input type="checkbox" name="tag" value="{{ t.id }}" {% if t.id in filtres.tags %}checked{% endif %} onchange="this.form.submit()">
+          {{ t.libelle }} <span class="nb">{{ t.nb }}</span>
+        </label>
+        {% endfor %}
+      </fieldset>
+      {% endfor %}
+      {% if filtres.pole or filtres.famille or filtres.tags %}
+      <a class="effacer" href="/?q={{ filtres.q | urlencode }}">Effacer les filtres</a>
+      {% endif %}
+    </aside>
+
+    <section class="resultats">
+      <p class="resume">
+        {% if resultats.mode == "recents" %}
+          {{ resultats.total }} document{{ "s" if resultats.total > 1 }} — les plus récents en premier
+        {% elif resultats.total == 0 %}
+          Aucun résultat pour « {{ filtres.q }} ». Essayez un autre mot, ou retirez des filtres.
+        {% else %}
+          {{ resultats.total }} résultat{{ "s" if resultats.total > 1 }}
+          {% if resultats.mode == "prefixe" %}<span class="note">(mots commençant par « {{ filtres.q }} »)</span>{% endif %}
+          {% if resultats.mode == "approchant" %}<span class="note">(noms approchants : vérifiez l'orthographe)</span>{% endif %}
+        {% endif %}
+      </p>
+
+      {% for d in resultats.documents %}
+      <article class="resultat">
+        <h2><a href="/document/{{ d.id }}">{{ d.titre or d.nom }}</a></h2>
+        <div class="meta">
+          <span class="badge pole">{{ d.pole }}</span>
+          <span class="badge">{{ d.famille }}</span>
+          {% if d.code_doc %}<span class="badge code">{{ d.code_doc }}</span>{% endif %}
+          {% for t in d.tags %}<span class="badge tag">{{ t.libelle }}</span>{% endfor %}
+          {% if d.statut == "ocr_requis" %}<span class="badge alerte">Scan non lu (OCR en attente)</span>{% endif %}
+          <span class="date">modifié le {{ d.modifie_le | date }}</span>
+        </div>
+        {% if d.extrait %}<p class="extrait">{{ d.extrait }}</p>{% endif %}
+        <div class="actions">
+          <a class="bouton" href="/document/{{ d.id }}/fichier" target="_blank">Ouvrir</a>
+          <button type="button" class="bouton secondaire" data-copier="{{ d.chemin }}">Copier le chemin</button>
+          <span class="chemin">{{ d.chemin_relatif }}</span>
+        </div>
+      </article>
+      {% endfor %}
+
+      {% if nb_pages > 1 %}
+      <nav class="pagination">
+        {% if filtres.page > 1 %}<button type="submit" name="page" value="{{ filtres.page - 1 }}">← Précédent</button>{% endif %}
+        <span>Page {{ filtres.page }} / {{ nb_pages }}</span>
+        {% if filtres.page < nb_pages %}<button type="submit" name="page" value="{{ filtres.page + 1 }}">Suivant →</button>{% endif %}
+      </nav>
+      {% endif %}
+    </section>
+  </div>
+</form>
+{% endblock %}

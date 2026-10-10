@@ -1,0 +1,40 @@
+# Taxonomie : tags proposés automatiquement à partir du contenu des documents.
+#
+# Format : "Libellé du tag" = ["mot-clé", "autre mot-clé", ...]
+#   - la casse et les accents sont ignorés ("Identitovigilance" = "identitovigilance")
+#   - un mot-clé est cherché en mot entier ("ad" ne trouve pas "admission")
+#   - un tag est posé si le score atteint le seuil : 1 point par occurrence dans le texte,
+#     3 points par occurrence dans le nom, le titre ou le chemin du fichier
+#
+# C'EST UN PREMIER JET À COMPLÉTER AVEC LES POLES (liste réelle des logiciels et secteurs).
+
+seuil = 2
+
+[logiciel]
+"EasyVista" = ["easyvista", "easy vista"]
+"Active Directory" = ["active directory", "controleur de domaine", "gpo"]
+"Messagerie" = ["outlook", "exchange", "boite mail", "boite aux lettres"]
+"Microsoft 365" = ["office 365", "microsoft 365", "teams", "onedrive", "sharepoint"]
+"Impression" = ["imprimante", "imprimantes", "file d'impression", "spouleur", "copieur"]
+"VPN" = ["vpn", "forticlient", "globalprotect"]
+"Citrix" = ["citrix", "xenapp", "storefront"]
+"VMware" = ["vmware", "vsphere", "vcenter", "esxi"]
+"KeePass" = ["keepass"]
+# Logiciels métier : à compléter, par exemple
+# "Nom du DPI" = ["nom du dpi", "alias"]
+# "Nom du logiciel de facturation" = ["..."]
+
+[secteur]
+"Identité" = ["identitovigilance", "identite", "ins", "inc", "doublon patient", "admission", "gam"]
+"Soins" = ["dossier de soins", "dpi", "prescription", "plan de soins", "administration medicamenteuse", "transmissions"]
+"Comptabilité / facturation" = ["facturation", "comptabilite", "pmsi", "t2a", "noemie", "b2", "titre de recette"]
+"Pharmacie" = ["pharmacie", "dispensation", "stupefiants"]
+"Laboratoire" = ["laboratoire", "biologie", "resultats d'analyse"]
+"Imagerie" = ["imagerie", "pacs", "radiologie", "dicom"]
+"Ressources humaines" = ["paie", "planning", "gestion des temps", "ressources humaines"]
+"Infrastructure" = ["serveur", "reseau", "switch", "pare-feu", "sauvegarde", "stockage"]
+
+[type]
+"Note technique" = ["note technique"]
+"Procédure" = ["procedure", "mode operatoire"]
+"Debug utilisateur" = ["message d'erreur", "ne fonctionne pas", "depannage", "debug", "redemarrer", "resolution"]

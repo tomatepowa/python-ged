@@ -1,0 +1,32 @@
+[project]
+name = "ged-dsi"
+version = "0.1.0"
+description = "GED légère en lecture seule : indexe les partages réseau existants et rend les notes techniques trouvables."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "jinja2>=3.1",
+    "psycopg[binary]>=3.2",
+    "psycopg-pool>=3.2",
+    "pymupdf>=1.24",
+]
+
+[project.scripts]
+ged = "ged.__main__:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ged"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

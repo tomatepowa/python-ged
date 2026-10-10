@@ -1,0 +1,39 @@
+# Configuration de la GED.
+# Copier ce fichier en config.toml (non versionné) et l'adapter.
+# Les chemins Windows s'écrivent entre apostrophes simples : '\\nas\partage' (pas d'échappement).
+
+[base]
+url = "postgresql://ged:CHANGER_MOI@localhost:5432/ged"
+
+[serveur]
+hote = "127.0.0.1"      # "0.0.0.0" pour ouvrir l'accès aux autres postes
+port = 8000
+
+[indexation]
+taille_max_mo = 100     # au-delà, le fichier est référencé mais son contenu n'est pas lu
+# Motifs supplémentaires à ignorer (syntaxe fnmatch, sur le chemin complet)
+exclure = [
+    # '*\Archives\*',
+]
+
+[ocr]
+# L'OCR utilise le Tesseract intégré à PyMuPDF : il suffit du fichier de langue fra.traineddata.
+active = false
+tessdata = 'C:\Program Files\Tesseract-OCR\tessdata'
+langue = "fra"
+dpi = 300
+
+[conversion]
+# LibreOffice, pour lire les anciens formats (.doc, .xls, .ppt, .rtf). Optionnel.
+soffice = 'C:\Program Files\LibreOffice\program\soffice.exe'
+
+# Une section [[sources]] par dossier à indexer. Le pôle sert de filtre dans la recherche.
+[[sources]]
+nom = "GED Métier"
+chemin = '\\nas\metier\ged'
+pole = "Métier"
+
+[[sources]]
+nom = "GED Infra"
+chemin = '\\nas\infra\ged'
+pole = "Infra"

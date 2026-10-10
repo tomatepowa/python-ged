@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block titre %}État de l'index – GED DSI{% endblock %}
+
+{% block contenu %}
+<h1>État de l'index</h1>
+
+<h2>Sources</h2>
+<table>
+  <thead><tr><th>Source</th><th>Pôle</th><th>Emplacement</th><th class="nombre">Documents</th><th>Dernière indexation</th></tr></thead>
+  <tbody>
+  {% for s in par_source %}
+    <tr><td>{{ s.nom }}</td><td>{{ s.pole }}</td><td class="chemin">{{ s.chemin }}</td><td class="nombre">{{ s.nb }}</td><td>{{ s.derniere_indexation | date }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>Lecture des documents</h2>
+<table>
+  <thead><tr><th>Statut</th><th class="nombre">Documents</th></tr></thead>
+  <tbody>
+  {% set libelles = {"indexe": "Texte indexé", "ocr_requis": "Scan en attente d'OCR", "non_supporte": "Format non lu", "erreur": "Erreur de lecture"} %}
+  {% for s in par_statut %}
+    <tr><td>{{ libelles.get(s.statut, s.statut) }}</td><td class="nombre">{{ s.nb }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% if erreurs %}
+<h2>Erreurs de lecture</h2>
+<table>
+  <thead><tr><th>Fichier</th><th>Erreur</th></tr></thead>
+  <tbody>
+  {% for e in erreurs %}
+    <tr><td><a href="/document/{{ e.id }}">{{ e.chemin_relatif }}</a></td><td>{{ e.erreur }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,133 @@
+import zipfile
+
+import pymupdf
+import pytest
+
+from ged.extraction import extraire, famille
+from ged.texte import detecter_code
+
+
+def test_docx_texte_entete_et_proprietes(fabriquer_docx):
+    chemin = fabriquer_docx(
+        "note.docx",
+        ["Objet", "Redémarrer le spouleur d'impression."],
+        entete="Note technique DSI-INFRA-NT-001-v02",
+        titre="Débug imprimantes",
+        auteur="Tech A",
+    )
+    r = extraire(chemin)
+    assert r.statut == "indexe"
+    assert r.titre == "Débug imprimantes"
+    assert r.auteur == "Tech A"
+    assert r.code_doc == "DSI-INFRA-NT-001-v02"
+    # L'en-tête, présent dans deux fichiers header, n'apparaît qu'une fois, en tête du contenu
+    assert r.contenu.count("Note technique") == 1
+    assert r.contenu.splitlines()[0].startswith("Note technique")
+    assert "spouleur" in r.contenu
+
+
+def test_xlsx_chaines_et_onglets(tmp_path):
+    chemin = tmp_path / "inventaire.xlsx"
+    ns = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+    with zipfile.ZipFile(chemin, "w") as z:
+        z.writestr("xl/workbook.xml", f'<workbook {ns}><sheets><sheet name="Serveurs"/></sheets></workbook>')
+        z.writestr("xl/sharedStrings.xml", f"<sst {ns}><si><t>SRV-AD-01</t></si><si><r><t>Contrôleur </t></r><r><t>de domaine</t></r></si></sst>")
+    r = extraire(chemin)
+    assert r.statut == "indexe"
+    assert r.contenu.splitlines() == ["Serveurs", "SRV-AD-01", "Contrôleur de domaine"]
+
+
+def test_pptx_diapositives_dans_l_ordre(tmp_path):
+    chemin = tmp_path / "formation.pptx"
+    ns = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
+    with zipfile.ZipFile(chemin, "w") as z:
+        for i in (10, 2, 1):
+            z.writestr(f"ppt/slides/slide{i}.xml", f"<sld {ns}><a:p><a:r><a:t>Diapo {i}</a:t></a:r></a:p></sld>")
+    r = extraire(chemin)
+    assert r.contenu.splitlines() == ["Diapo 1", "Diapo 2", "Diapo 10"]
+    assert r.nb_pages == 3
+
+
+def _pdf(chemin, textes):
+    doc = pymupdf.open()
+    for texte in textes:
+        page = doc.new_page()
+        if texte:
+            page.insert_text((72, 72), texte)
+    doc.save(chemin)
+
+
+def test_pdf_texte(tmp_path):
+    chemin = tmp_path / "procedure.pdf"
+    _pdf(chemin, ["Procedure de connexion au VPN depuis le domicile, etape par etape."])
+    r = extraire(chemin)
+    assert r.statut == "indexe"
+    assert "VPN" in r.contenu
+    assert r.nb_pages == 1
+
+
+def test_pdf_sans_texte_part_en_ocr(tmp_path):
+    chemin = tmp_path / "scan.pdf"
+    _pdf(chemin, ["", ""])
+    r = extraire(chemin)
+    assert r.statut == "ocr_requis"
+    assert r.nb_pages == 2
+
+
+def test_texte_windows_1252(tmp_path):
+    chemin = tmp_path / "notes.txt"
+    chemin.write_bytes("Procédure d'arrêt".encode("cp1252"))
+    assert extraire(chemin).contenu == "Procédure d'arrêt"
+
+
+def test_eml(tmp_path):
+    chemin = tmp_path / "incident.eml"
+    chemin.write_text(
+        "From: support@exemple.fr\nTo: dsi@exemple.fr\nSubject: Panne messagerie\n"
+        "Content-Type: text/plain; charset=utf-8\n\nRedemarrer le service de transport.\n",
+        encoding="utf-8",
+    )
+    r = extraire(chemin)
+    assert r.titre == "Panne messagerie"
+    assert "Redemarrer le service" in r.contenu
+
+
+def test_image_part_en_ocr(tmp_path):
+    chemin = tmp_path / "capture.png"
+    chemin.write_bytes(b"\x89PNG")
+    assert extraire(chemin).statut == "ocr_requis"
+
+
+def test_ancien_format_sans_libreoffice(tmp_path):
+    chemin = tmp_path / "vieux.doc"
+    chemin.write_bytes(b"\xd0\xcf\x11\xe0")
+    r = extraire(chemin, soffice=None)
+    assert r.statut == "non_supporte"
+
+
+def test_fichier_corrompu_ne_plante_pas(tmp_path):
+    chemin = tmp_path / "abime.docx"
+    chemin.write_bytes(b"ceci n'est pas un zip")
+    r = extraire(chemin)
+    assert r.statut == "erreur"
+    assert "BadZipFile" in r.erreur
+
+
+@pytest.mark.parametrize(
+    "extension, attendu",
+    [(".DOCX", "Word"), (".pdf", "PDF"), (".jpeg", "Image"), (".kdbx", "Autre"), (".mov", "Video")],
+)
+def test_famille(extension, attendu):
+    assert famille(extension) == attendu
+
+
+@pytest.mark.parametrize(
+    "texte, attendu",
+    [
+        ("Réf : DSI-INFRA-PRO-012-v03 page 1", "DSI-INFRA-PRO-012-v03"),
+        ("code DSI-METIER-NT-7 incomplet", None),
+        ("DSI-BI-MO-0042", "DSI-BI-MO-0042"),
+    ],
+)
+def test_detecter_code(texte, attendu):
+    assert detecter_code(texte) == attendu

@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Configuration locale (contient le mot de passe de la base)
+config.toml
+
+# Résultats de l'outil d'inventaire (contiennent des chemins internes)
+inventaire_*/
+
+# Éditeurs / système
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

@@ -1,0 +1,80 @@
+-- Schéma de la GED. Idempotent : peut être rejoué sans risque (commande `ged init-db`).
+
+CREATE EXTENSION IF NOT EXISTS unaccent;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+-- Configuration de recherche "français sans accents" :
+-- "procédure", "Procedure" et "procédures" donnent le même lexème.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_ts_config WHERE cfgname = 'ged_fr') THEN
+        CREATE TEXT SEARCH CONFIGURATION ged_fr (COPY = french);
+        ALTER TEXT SEARCH CONFIGURATION ged_fr
+            ALTER MAPPING FOR hword, hword_part, word WITH unaccent, french_stem;
+    END IF;
+END
+$$;
+
+CREATE TABLE IF NOT EXISTS source (
+    id      serial PRIMARY KEY,
+    nom     text NOT NULL UNIQUE,
+    chemin  text NOT NULL,
+    pole    text NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS document (
+    id              bigserial PRIMARY KEY,
+    source_id       int NOT NULL REFERENCES source (id),
+    chemin          text NOT NULL UNIQUE,
+    chemin_relatif  text NOT NULL,
+    nom             text NOT NULL,
+    extension       text NOT NULL,
+    famille         text NOT NULL,
+    taille          bigint NOT NULL,
+    modifie_le      timestamptz NOT NULL,
+    empreinte       text,
+    -- indexe | ocr_requis | non_supporte | erreur
+    statut          text NOT NULL,
+    erreur          text,
+    -- texte | conversion | ocr
+    methode         text,
+    titre           text,
+    auteur          text,
+    code_doc        text,
+    nb_pages        int,
+    contenu         text,
+    vu_le           timestamptz NOT NULL DEFAULT now(),
+    indexe_le       timestamptz,
+    supprime_le     timestamptz,
+    -- Vecteur de recherche pondéré : nom/titre (A) > code/chemin (B) > contenu (C).
+    -- La ponctuation des noms de fichiers est remplacée par des espaces pour que
+    -- "Debug_imprimantes.docx" soit trouvé par "imprimante".
+    recherche tsvector GENERATED ALWAYS AS (
+        setweight(to_tsvector('ged_fr', coalesce(titre, '') || ' ' || regexp_replace(nom, '[._\-]+', ' ', 'g')), 'A')
+        || setweight(to_tsvector('ged_fr', coalesce(code_doc, '') || ' ' || regexp_replace(chemin_relatif, '[\\/._\-]+', ' ', 'g')), 'B')
+        || setweight(to_tsvector('ged_fr', left(coalesce(contenu, ''), 500000)), 'C')
+    ) STORED
+);
+
+CREATE INDEX IF NOT EXISTS document_recherche_idx ON document USING gin (recherche);
+CREATE INDEX IF NOT EXISTS document_nom_trgm_idx ON document USING gin (nom gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS document_statut_idx ON document (statut) WHERE supprime_le IS NULL;
+CREATE INDEX IF NOT EXISTS document_source_idx ON document (source_id);
+
+CREATE TABLE IF NOT EXISTS tag (
+    id          serial PRIMARY KEY,
+    -- logiciel | secteur | type
+    categorie   text NOT NULL,
+    libelle     text NOT NULL,
+    UNIQUE (categorie, libelle)
+);
+
+CREATE TABLE IF NOT EXISTS document_tag (
+    document_id bigint NOT NULL REFERENCES document (id) ON DELETE CASCADE,
+    tag_id      int NOT NULL REFERENCES tag (id) ON DELETE CASCADE,
+    -- auto (proposé par la taxonomie) | manuel (posé par un utilisateur)
+    origine     text NOT NULL DEFAULT 'auto',
+    PRIMARY KEY (document_id, tag_id)
+);
+
+CREATE INDEX IF NOT EXISTS document_tag_tag_idx ON document_tag (tag_id);

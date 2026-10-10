@@ -38,7 +38,7 @@ densite_min = 0.5
 "Pharmacie" = ["dispensation", "titre:pharmacie"]
 "Laboratoire" = ["titre:laboratoire", "titre:biologie"]
 "Imagerie" = ["pacs", "dicom", "titre:imagerie", "titre:radiologie"]
-"Ressources humaines" = ["gestion des temps", "titre:paie", "titre:rh"]
+"Ressources humaines" = ["gestion des temps", "bulletin de paie", "titre:paie", "titre:paye", "titre:rh"]
 "Infrastructure" = ["pare-feu", "vlan", "baie de stockage", "titre:serveur", "titre:reseau", "titre:sauvegarde"]
 
 [type]

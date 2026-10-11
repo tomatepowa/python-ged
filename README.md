@@ -121,12 +121,12 @@ Pour tester sur un PC de travail : un script installe tout (uv, Python, PostgreS
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\outils\installation\Installer-Poste.ps1 `
-    -Source 'GED Infra|\nas\infra\ged|Infra', 'GED Métier|\nas\metier\ged|Métier'
+    -Source 'GED Infra|\\nas\infra\ged|Infra', 'GED Métier|\\nas\metier\ged|Métier'
 ```
 
 Options : `-Port 5433` si un PostgreSQL utilise déjà le port 5432, `-Proxy http://proxy:8080` derrière un proxy, `-OcrPrecis` pour le modèle OCR le plus précis. Le script peut être relancé : les étapes déjà faites sont sautées.
 
-PostgreSQL ne tourne pas en service Windows (il faudrait des droits admin). Au quotidien :
+PostgreSQL ne tourne pas en service Windows (il faudrait des droits admin). Au quotidien (précéder de `powershell -ExecutionPolicy Bypass -File` si l'exécution de scripts est bloquée sur le poste) :
 
 ```powershell
 .\outils\installation\GED-Poste.ps1 demarrer    # PostgreSQL si besoin + interface sur http://127.0.0.1:8000

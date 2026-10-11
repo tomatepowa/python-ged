@@ -226,6 +226,15 @@
   });
 
   zone.addEventListener('click', (e) => {
+    // Tout déplier / tout replier l'arborescence (les sources restent ouvertes au repli)
+    const deplier = e.target.closest('[data-deplier]');
+    if (deplier) {
+      const ouvrir = deplier.dataset.deplier === 'tout';
+      zone.querySelectorAll('details.arbre-dossier').forEach((d) => {
+        d.open = ouvrir || d.classList.contains('source');
+      });
+      return;
+    }
     // Dossier de l'arborescence (ou chemin d'un résultat, ou ⬆) : la recherche y est limitée
     const dossier = e.target.closest('[data-dossier]');
     if (dossier) {

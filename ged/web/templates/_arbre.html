@@ -49,6 +49,10 @@
 {% if tronque %}<p class="avertissement">Affichage limité aux {{ resultats.total }} premiers documents : affinez la recherche ou les filtres.</p>{% endif %}
 
 {% if arbre %}
+<div class="arbre-actions">
+  <button type="button" class="pastille" data-deplier="tout">⊞ Tout déplier</button>
+  <button type="button" class="pastille" data-deplier="rien">⊟ Tout replier</button>
+</div>
 <div class="arbre-resultats">
   {% for s in arbre %}
   <details class="arbre-dossier source" open>

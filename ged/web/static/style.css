@@ -377,3 +377,6 @@ a.badge.tag:hover { outline: 1px solid var(--tag-texte); }
 .fil-chemin a { color: var(--texte-doux); text-decoration: none; }
 .fil-chemin a:hover { color: var(--accent); text-decoration: underline; }
 .suggestion .fil-chemin { flex: 0 1 auto; max-width: 55%; margin-left: auto; font: .75rem Consolas, monospace; }
+
+/* Tout déplier / tout replier */
+.arbre-actions { display: flex; gap: .4rem; margin-bottom: .5rem; }

@@ -115,6 +115,28 @@ uv run ged init-db
 
 > `init-db` crée les extensions `unaccent`, `pg_trgm` et `fuzzystrmatch`. Si le rôle `ged` n'a pas le droit de les créer, les créer une fois en superutilisateur dans la base `ged`.
 
+### Installation rapide sur un poste, sans droits administrateur
+
+Pour tester sur un PC de travail : un script installe tout (uv, Python, PostgreSQL en version zip, fichier de langue OCR) dans `%LOCALAPPDATA%\ged`, sans toucher au système ni au PATH, crée la base et génère `config.toml` :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\outils\installation\Installer-Poste.ps1 `
+    -Source 'GED Infra|\nas\infra\ged|Infra', 'GED Métier|\nas\metier\ged|Métier'
+```
+
+Options : `-Port 5433` si un PostgreSQL utilise déjà le port 5432, `-Proxy http://proxy:8080` derrière un proxy, `-OcrPrecis` pour le modèle OCR le plus précis. Le script peut être relancé : les étapes déjà faites sont sautées.
+
+PostgreSQL ne tourne pas en service Windows (il faudrait des droits admin). Au quotidien :
+
+```powershell
+.\outils\installation\GED-Poste.ps1 demarrer    # PostgreSQL si besoin + interface sur http://127.0.0.1:8000
+.\outils\installation\GED-Poste.ps1 indexer     # indexe les partages
+.\outils\installation\GED-Poste.ps1 ocr         # passe les scans en OCR
+.\outils\installation\GED-Poste.ps1 arreter     # arrête PostgreSQL
+```
+
+> Peuvent bloquer malgré l'absence de droits admin : AppLocker (exécutables lancés depuis le profil), un proxy, l'antivirus. Prévenir le service informatique avant un test sur un poste de production.
+
 ## Configuration
 
 Tout se règle dans `config.toml` (non versionné, voir [`config.exemple.toml`](config.exemple.toml)) :
@@ -200,6 +222,7 @@ ged-dsi/
 │   ├── texte.py         # normalisation, détection du code documentaire
 │   └── web/             # application FastAPI, gabarits, CSS
 ├── outils/inventaire/   # script PowerShell d'état des lieux
+├── outils/installation/ # installation sans droits admin et commandes du quotidien
 ├── tests/
 ├── config.exemple.toml
 ├── taxonomie.toml

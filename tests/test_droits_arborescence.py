@@ -84,6 +84,9 @@ def test_arbre_des_resultats_fusionne_les_chaines_de_dossiers():
     # "Reseau" ne contient que "VPN" : les deux sont fusionnés
     assert [e.nom for e in infra.enfants] == ["Imprimantes", "Reseau › VPN"]
     assert infra.enfants[1].chemin == r"Infra\Reseau\VPN"
+    # Chaque dossier de la chaîne fusionnée reste atteignable (pour y limiter la recherche)
+    assert infra.enfants[1].ancetres == [("Reseau", r"Infra\Reseau")]
+    assert infra.ancetres == []
     assert [f["nom"] for f in infra.enfants[1].fichiers] == ["client.pdf", "vpn.docx"]
 
 

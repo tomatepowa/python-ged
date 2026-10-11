@@ -43,6 +43,8 @@ class Branche:
     nb_documents: int
     fichiers: list[dict]
     enfants: list["Branche"]
+    # Dossiers de la chaîne fusionnée, sauf le dernier : (nom, chemin), chacun cliquable
+    ancetres: list[tuple[str, str]] = field(default_factory=list)
 
 
 def construire_arbre_resultats(documents: list[dict]) -> list[dict]:
@@ -78,11 +80,14 @@ def construire_arbre_resultats(documents: list[dict]) -> list[dict]:
 
 def _compacter(noeud: Dossier) -> Branche:
     noms = [noeud.nom]
+    ancetres = []
     while not noeud.fichiers and len(noeud.enfants) == 1:
+        ancetres.append((noeud.nom, noeud.chemin))
         noeud = next(iter(noeud.enfants.values()))
         noms.append(noeud.nom)
     return Branche(
         nom=" › ".join(noms),
+        ancetres=ancetres,
         chemin=noeud.chemin,
         nb_documents=noeud.nb_documents,
         fichiers=sorted(noeud.fichiers, key=lambda f: f["nom"].lower()),

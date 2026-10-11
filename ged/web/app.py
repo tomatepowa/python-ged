@@ -43,6 +43,7 @@ def lien_dossier(source_id: int, chemin: str = "") -> str:
 
 
 templates.env.globals["lien_dossier"] = lien_dossier
+templates.env.globals["fil_ariane"] = fil_ariane
 templates.env.filters["date"] = lambda d: d.astimezone().strftime("%d/%m/%Y") if d else ""
 
 

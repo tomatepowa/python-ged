@@ -7,9 +7,17 @@
 <div class="filtres-actifs">
   <span class="note">Filtres :</span>
   {% if cible %}
-    {% set parties = libelle_dossier.split(" › ") %}
-    {% set court = parties[0] ~ " › … › " ~ parties[-2:] | join(" › ") if parties | length > 4 else libelle_dossier %}
-    <span class="pastille dossier" title="{{ libelle_dossier }}">📁 {{ court }}
+    {# Chaque dossier du chemin est cliquable pour remonter de plusieurs niveaux d'un coup ;
+       au-delà de 5 niveaux, le milieu est réduit en « … » #}
+    {% set niveaux = [(libelle_dossier.split(" › ")[0], "")] + fil_ariane(cible[1]) %}
+    <span class="pastille dossier" title="{{ libelle_dossier }}">📁
+      {%- for nom, chemin in niveaux %}
+        {%- if niveaux | length <= 5 or loop.first or loop.revindex <= 3 %}
+          {%- if not loop.first %} ›{% endif %}
+          {% if loop.last %}<span>{{ nom }}</span>{% else %}<button type="button" class="segment" data-dossier="{{ cible[0] }}:{{ chemin }}" title="Chercher dans « {{ nom }} »">{{ nom }}</button>{% endif %}
+        {%- elif loop.index == 2 %} › …
+        {%- endif %}
+      {%- endfor %}
       {% if cible[1] %}
       {% set parent = cible[1].rsplit("\\", 1)[0] if "\\" in cible[1] else "" %}
       <button type="button" data-dossier="{{ cible[0] }}:{{ parent }}" title="Remonter au dossier parent">⬆</button>

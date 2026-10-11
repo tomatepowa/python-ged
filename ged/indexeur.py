@@ -79,6 +79,15 @@ def empreinte(chemin: Path) -> str:
     return h.hexdigest()
 
 
+def a_quitte(ancien: str, nouveau: str) -> bool:
+    """Le fichier indexé sous `ancien` a-t-il pu devenir `nouveau` (renommage, déplacement) ?
+
+    Oui si l'ancien chemin n'existe plus, ou s'il ne diffère que par la casse : sous Windows,
+    « Passeport.pdf » renommé en « passeport.pdf » existe toujours sous son ancienne casse.
+    """
+    return ancien.lower() == nouveau.lower() or not Path(ancien).exists()
+
+
 def rafraichir_vocabulaire(conn: psycopg.Connection) -> int:
     """Recalcule la liste des mots du corpus.
 
@@ -204,6 +213,9 @@ class Indexeur:
             resultat = Resultat(statut="non_supporte", erreur=f"Fichier de plus de {self.cfg.taille_max_mo} Mo")
         else:
             signature = empreinte(chemin)
+            if not existant and self._suivre_deplacement(source, source_id, chemin, stat, signature,
+                                                          proprietaire, droits):
+                return "deplace"
             resultat = extraire(chemin, self.cfg.soffice)
 
         # Contenu identique déjà passé en OCR : on garde le résultat (l'OCR est lent)
@@ -267,6 +279,51 @@ class Indexeur:
 
         self._appliquer_tags(ligne["id"], f"{resultat.titre or ''} {chemin.relative_to(source.chemin)}", resultat.contenu)
         return resultat.statut
+
+    def _suivre_deplacement(self, source: Source, source_id: int, chemin: Path, stat: os.stat_result,
+                            signature: str, proprietaire: str | None, droits: list | None) -> bool:
+        """Fichier renommé ou déplacé : le document existant change de chemin au lieu d'être recréé.
+
+        Il garde son identifiant (liens), son texte (pas de nouvel OCR ni de conversion) et ses
+        tags posés à la main. Un document au contenu identique dont le fichier existe toujours
+        est un doublon, pas un déplacement : il n'est pas touché.
+        """
+        candidats = self.conn.execute(
+            "SELECT id, chemin, contenu, titre FROM document WHERE empreinte = %s AND taille = %s "
+            "ORDER BY supprime_le IS NOT NULL, vu_le DESC",
+            (signature, stat.st_size),
+        ).fetchall()
+        doc = next((c for c in candidats if a_quitte(c["chemin"], str(chemin))), None)
+        if doc is None:
+            return False
+
+        log.info("Déplacé : %s -> %s", doc["chemin"], chemin)
+        relatif = chemin.relative_to(source.chemin)
+        self.conn.execute(
+            """
+            UPDATE document SET source_id = %(source_id)s, chemin = %(chemin)s, chemin_relatif = %(chemin_relatif)s,
+                nom = %(nom)s, extension = %(extension)s, famille = %(famille)s, cree_le = %(cree_le)s,
+                modifie_le = %(modifie_le)s, proprietaire = %(proprietaire)s, droits = %(droits)s,
+                vu_le = now(), supprime_le = NULL
+            WHERE id = %(id)s
+            """,
+            {
+                "id": doc["id"],
+                "source_id": source_id,
+                "chemin": str(chemin),
+                "chemin_relatif": str(relatif),
+                "nom": chemin.name,
+                "extension": chemin.suffix.lower(),
+                "famille": famille(chemin.suffix),
+                "cree_le": datetime.fromtimestamp(stat.st_ctime, tz=timezone.utc),
+                "modifie_le": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc),
+                "proprietaire": proprietaire,
+                "droits": Jsonb(droits) if droits is not None else None,
+            },
+        )
+        # Les tags automatiques dépendent aussi du chemin (dossiers, nom du fichier)
+        self._appliquer_tags(doc["id"], f"{doc['titre'] or ''} {relatif}", doc["contenu"] or "")
+        return True
 
     # --- OCR --------------------------------------------------------------------------
 

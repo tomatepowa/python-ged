@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from ged.config import charger
-from ged.indexeur import parcourir
+from ged.indexeur import a_quitte, parcourir
 from ged.extraits import construire_motif, extraire
 from ged.recherche import Filtres, requete_saisie, sous_titre
 
@@ -77,3 +77,14 @@ def test_parcourir_signale_les_dossiers_inaccessibles(tmp_path):
     inaccessibles: list[Path] = []
     assert list(parcourir(tmp_path / "absent", [], inaccessibles)) == []
     assert inaccessibles == [tmp_path / "absent"]
+
+
+def test_deplacement_seulement_si_l_ancien_fichier_a_disparu(tmp_path):
+    present = tmp_path / "Passeport.pdf"
+    present.write_bytes(b"x")
+    nouveau = str(tmp_path / "Identite" / "Passeport Antoine.pdf")
+    # Toujours là : c'est un doublon, pas un déplacement
+    assert not a_quitte(str(present), nouveau)
+    assert a_quitte(str(tmp_path / "ancien nom.pdf"), nouveau)
+    # Changement de casse seule : l'ancien chemin « existe » encore sous Windows
+    assert a_quitte(str(present), str(tmp_path / "passeport.pdf"))

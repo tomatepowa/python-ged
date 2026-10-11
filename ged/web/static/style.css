@@ -207,15 +207,6 @@ th { color: var(--texte-doux); font-weight: 600; }
 .suggestion .icone { width: 1rem; color: var(--texte-doux); }
 .suggestion.document .badge { flex-shrink: 0; font-size: .72rem; }
 .suggestion.document .nom { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.suggestion.document .chemin {
-  margin-left: auto;
-  max-width: 45%;
-  overflow: hidden;
-  color: var(--texte-doux);
-  font: .75rem Consolas, monospace;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
 .suggestions-titre {
   margin-top: .3rem;
   padding: .5rem 1rem .2rem;
@@ -228,7 +219,7 @@ th { color: var(--texte-doux); font-weight: 600; }
 .suggestions-titre:first-child { margin-top: 0; border-top: 0; }
 
 @media (max-width: 760px) {
-  .suggestion.document .chemin { display: none; }
+  .suggestion .fil-chemin { display: none; }
 }
 .sous-titre { margin: -.2rem 0 .45rem; color: var(--texte-doux); font-size: .9rem; }
 .effacer {
@@ -363,7 +354,26 @@ a.badge.tag:hover { outline: 1px solid var(--tag-texte); }
 .pastille.dossier button { padding: 0 .25rem; background: none; color: inherit; font-weight: 700; }
 .pastille.dossier button:hover { color: var(--accent); }
 
-/* Premiers dossiers du chemin d'un résultat */
-.debut-chemin { color: var(--texte-doux); font-size: .85rem; overflow-wrap: anywhere; }
-.debut-chemin a { color: var(--texte-doux); text-decoration: none; }
-.debut-chemin a:hover { color: var(--accent); text-decoration: underline; }
+/* Chemin d'un résultat : début et dossier final prioritaires, milieu réduit en « … » si besoin */
+.fil-chemin {
+  display: flex;
+  flex: 1 1 320px;
+  align-items: baseline;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--texte-doux);
+  font-size: .85rem;
+  white-space: nowrap;
+}
+.fil-chemin > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Seul le milieu se réduit : un rétrécissement même minime du début ou de la fin (répartition
+   proportionnelle de flexbox) suffirait à afficher un « … » parasite. Plafonds pour écran étroit. */
+.fil-chemin .debut { flex-shrink: 0; max-width: 60%; }
+.fil-chemin .milieu { flex-shrink: 1; }
+.fil-chemin .fin { flex-shrink: 0; max-width: 40%; }
+.fil-chemin .sep { margin: 0 .3rem; }
+.fil-chemin > span:first-of-type > .sep:first-child { display: none; }
+.fil-chemin > span:first-of-type { margin-left: .3rem; }
+.fil-chemin a { color: var(--texte-doux); text-decoration: none; }
+.fil-chemin a:hover { color: var(--accent); text-decoration: underline; }
+.suggestion .fil-chemin { flex: 0 1 auto; max-width: 55%; margin-left: auto; font: .75rem Consolas, monospace; }

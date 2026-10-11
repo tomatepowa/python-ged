@@ -85,3 +85,15 @@ def test_arbre_des_resultats_fusionne_les_chaines_de_dossiers():
     assert [e.nom for e in infra.enfants] == ["Imprimantes", "Reseau › VPN"]
     assert infra.enfants[1].chemin == r"Infra\Reseau\VPN"
     assert [f["nom"] for f in infra.enfants[1].fichiers] == ["client.pdf", "vpn.docx"]
+
+
+def test_decoupage_du_chemin_affiche():
+    from ged.recherche import decouper_chemin
+
+    niveaux = fil_ariane(r"a\b\c\d\e\f\g")
+    decoupe = decouper_chemin(niveaux)
+    assert [n for n, _ in decoupe["debut"]] == ["a", "b", "c", "d"]
+    assert [n for n, _ in decoupe["milieu"]] == ["e", "f"]
+    assert decoupe["fin"] == [("g", r"a\b\c\d\e\f\g")]
+    # Chemin court : tout dans le début, rien à réduire
+    assert decouper_chemin(fil_ariane(r"a\b\c\d\e")) == {"debut": fil_ariane(r"a\b\c\d\e"), "milieu": [], "fin": []}

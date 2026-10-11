@@ -15,9 +15,9 @@ from ged.extraits import construire_motif, extraire
 from ged.texte import normaliser
 
 PAR_PAGE = 20
-# Niveaux de dossiers affichés pour chaque résultat : les premiers (pôle, thème...) situent
-# mieux un document que son dossier final
-NIVEAUX_CHEMIN = 3
+# Chemin affiché pour chaque résultat : les premiers dossiers (pôle, thème...) et le dossier
+# final sont toujours visibles ; ceux du milieu se réduisent en « … » si la place manque
+NIVEAUX_CHEMIN = 4
 # Au-delà, la vue arborescence est tronquée (il faut affiner la recherche)
 DOCUMENTS_ARBRE_MAX = 5000
 # Guillemets, exclusion (-mot) ou OR : syntaxe "moteur de recherche", traitée par websearch_to_tsquery
@@ -289,9 +289,7 @@ def _executer(
         ligne["extrait"] = extraire(ligne.pop("contenu"), motif)
         ligne["sous_titre"] = sous_titre(ligne["titre"], ligne["nom"])
         ligne["dossier"] = dossier_parent(ligne["chemin_relatif"])
-        niveaux = fil_ariane(ligne["dossier"])
-        ligne["debut_chemin"] = niveaux[:NIVEAUX_CHEMIN]
-        ligne["chemin_coupe"] = len(niveaux) > NIVEAUX_CHEMIN
+        ligne["chemin_decoupe"] = decouper_chemin(fil_ariane(ligne["dossier"]))
     total = lignes[0]["total"] if lignes else 0
     return Resultats(lignes, total, mode, compte_tags=compte_tags)
 
@@ -345,9 +343,19 @@ def suggerer(conn: psycopg.Connection, q: str) -> dict:
         },
     ).fetchall()
     for doc in documents:
-        niveaux = dossier_parent(doc.pop("chemin_relatif")).split("\\")
-        doc["debut_chemin"] = " › ".join(filter(None, niveaux[:NIVEAUX_CHEMIN])) + (" › …" if len(niveaux) > NIVEAUX_CHEMIN else "")
+        decoupe = decouper_chemin(fil_ariane(dossier_parent(doc.pop("chemin_relatif"))))
+        doc["chemin"] = {partie: [nom for nom, _ in niveaux] for partie, niveaux in decoupe.items()}
     return {"completions": completions, "documents": documents}
+
+
+def decouper_chemin(niveaux: list[tuple[str, str]]) -> dict[str, list[tuple[str, str]]]:
+    """Sépare un chemin en début (toujours affiché), milieu (réductible) et dossier final.
+
+    [a, b, c, d, e, f, g] -> début [a, b, c, d], milieu [e, f], fin [g]
+    """
+    if len(niveaux) <= NIVEAUX_CHEMIN + 1:
+        return {"debut": niveaux, "milieu": [], "fin": []}
+    return {"debut": niveaux[:NIVEAUX_CHEMIN], "milieu": niveaux[NIVEAUX_CHEMIN:-1], "fin": niveaux[-1:]}
 
 
 def sous_titre(titre: str | None, nom: str) -> str | None:

@@ -1,3 +1,5 @@
+{# Segment de chemin : début et dossier final toujours visibles, milieu réductible (voir CSS .fil-chemin) #}
+{% macro segments(niveaux, classe, source_id) %}{% if niveaux %}<span class="{{ classe }}">{% for nom, chemin in niveaux %}<span class="sep">›</span><a href="{{ lien_dossier(source_id, chemin) }}" data-dossier="{{ source_id }}:{{ chemin }}" title="Chercher dans « {{ nom }} »">{{ nom }}</a>{% endfor %}</span>{% endif %}{% endmacro %}
 {% include "_filtres_actifs.html" %}
 <p class="resume">
   {% if resultats.mode == "recents" %}
@@ -28,10 +30,7 @@
   <div class="actions">
     <a class="bouton" href="/document/{{ d.id }}/fichier" target="_blank">Ouvrir</a>
     <button type="button" class="bouton secondaire" data-copier="{{ d.chemin }}">Copier le chemin</button>
-    <span class="debut-chemin" title="{{ d.chemin_relatif }}">
-      📁{% for nom, chemin in d.debut_chemin %}{{ " ›" if not loop.first }}
-      <a href="{{ lien_dossier(d.source_id, chemin) }}" data-dossier="{{ d.source_id }}:{{ chemin }}" title="Chercher dans « {{ nom }} »">{{ nom }}</a>{% else %} racine{% endfor %}{% if d.chemin_coupe %} › …{% endif %}
-    </span>
+    <span class="fil-chemin" title="{{ d.chemin_relatif }}">📁{% if not d.chemin_decoupe.debut %} racine{% endif %}{{ segments(d.chemin_decoupe.debut, "debut", d.source_id) }}{{ segments(d.chemin_decoupe.milieu, "milieu", d.source_id) }}{{ segments(d.chemin_decoupe.fin, "fin", d.source_id) }}</span>
   </div>
 </article>
 {% endfor %}

@@ -90,6 +90,19 @@
     return e;
   }
 
+  // Chemin d'un document : début et dossier final toujours visibles, milieu réductible en « … »
+  function filChemin(chemin) {
+    const fil = element('span', 'fil-chemin');
+    for (const partie of ['debut', 'milieu', 'fin']) {
+      if (!chemin[partie].length) continue;
+      const groupe = element('span', partie);
+      for (const nom of chemin[partie]) groupe.append(element('span', 'sep', '›'), nom);
+      fil.append(groupe);
+    }
+    fil.title = [...chemin.debut, ...chemin.milieu, ...chemin.fin].join(' › ');
+    return fil;
+  }
+
   function fermerSuggestions() {
     liste.hidden = true;
     champ.setAttribute('aria-expanded', 'false');
@@ -131,7 +144,7 @@
       elements.push(null); // séparateur, retiré plus bas
       for (const d of donnees.documents) {
         const noeud = element('div', 'suggestion document');
-        noeud.append(element('span', 'badge', d.famille), element('span', 'nom', d.nom), element('span', 'chemin', d.debut_chemin));
+        noeud.append(element('span', 'badge', d.famille), element('span', 'nom', d.nom), filChemin(d.chemin));
         elements.push({ type: 'document', id: d.id, noeud });
       }
     }

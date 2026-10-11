@@ -131,7 +131,7 @@
       elements.push(null); // séparateur, retiré plus bas
       for (const d of donnees.documents) {
         const noeud = element('div', 'suggestion document');
-        noeud.append(element('span', 'badge', d.famille), element('span', 'nom', d.nom), element('span', 'chemin', d.chemin_relatif));
+        noeud.append(element('span', 'badge', d.famille), element('span', 'nom', d.nom), element('span', 'chemin', d.debut_chemin));
         elements.push({ type: 'document', id: d.id, noeud });
       }
     }
@@ -213,6 +213,14 @@
   });
 
   zone.addEventListener('click', (e) => {
+    // Dossier de l'arborescence (ou chemin d'un résultat, ou ⬆) : la recherche y est limitée
+    const dossier = e.target.closest('[data-dossier]');
+    if (dossier) {
+      e.preventDefault(); // empêche aussi le dépliage du dossier quand on clique sur son nom
+      formulaire.elements.dossier.value = dossier.dataset.dossier;
+      chercher(parametres());
+      return;
+    }
     // Étiquettes des filtres actifs : la croix retire le filtre
     const retirerTag = e.target.closest('[data-retirer-tag]');
     const retirer = e.target.closest('[data-retirer]');
@@ -223,6 +231,7 @@
       });
       if (quoi === 'pole' || quoi === 'tout') formulaire.elements.pole.value = '';
       if (quoi === 'famille' || quoi === 'tout') formulaire.elements.famille.value = '';
+      if (quoi === 'dossier' || quoi === 'tout') formulaire.elements.dossier.value = '';
       chercher();
       return;
     }
@@ -246,6 +255,7 @@
   document.getElementById('effacer-filtres').addEventListener('click', () => {
     formulaire.querySelectorAll('select').forEach((s) => { s.value = ''; });
     formulaire.querySelectorAll('input[type=checkbox]').forEach((c) => { c.checked = false; });
+    formulaire.elements.dossier.value = '';
     chercher();
   });
 

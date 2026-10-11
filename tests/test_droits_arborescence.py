@@ -1,9 +1,7 @@
 import sys
-from datetime import datetime, timezone
-
 import pytest
 
-from ged.arborescence import construire_arbre, dossier_parent, fil_ariane, trouver
+from ged.arborescence import dossier_parent, fil_ariane
 from ged.droits import CONTROLE_TOTAL, GENERIC_ALL, LECTURE, LECTURE_EXECUTION, MODIFICATION, fusionner, libelle_droits
 from ged.recherche import Filtres
 
@@ -48,26 +46,6 @@ def test_lire_securite_fichier_reel(tmp_path):
     assert droits and all({"compte", "droits", "refus", "herite"} <= d.keys() for d in droits)
 
 
-def _d(jour: int) -> datetime:
-    return datetime(2026, 1, jour, tzinfo=timezone.utc)
-
-
-def test_arbre_des_dossiers():
-    racine = construire_arbre([
-        ("Infra\\Reseau\\vpn.docx", _d(1)),
-        ("Infra\\Reseau\\switch.pdf", _d(5)),
-        ("Infra\\imprimantes.docx", _d(3)),
-        ("lisez-moi.txt", _d(2)),
-    ])
-    assert racine.nb_documents == 4
-    infra = trouver(racine, "Infra")
-    assert infra.nb_documents == 3
-    assert infra.derniere_modification == _d(5)
-    assert [d.nom for d in infra.sous_dossiers()] == ["Reseau"]
-    assert trouver(racine, "Infra\\Reseau").chemin == "Infra\\Reseau"
-    assert trouver(racine, "Absent") is None
-
-
 def test_chemins():
     assert dossier_parent("a\\b\\fichier.pdf") == "a\\b"
     assert dossier_parent("fichier.pdf") == ""
@@ -80,6 +58,13 @@ def test_filtre_dossier():
     assert Filtres(dossier="3:").dossier_cible() == (3, "")
     assert Filtres(dossier="n'importe quoi").dossier_cible() is None
     assert "dossier=3%3AInfra" in Filtres(q="vpn", dossier="3:Infra").lien()
+
+
+def test_vue_arborescence_par_defaut():
+    # L'arborescence est la vue par défaut : elle n'apparaît pas dans l'URL, la liste si
+    assert Filtres(q="vpn").lien() == "q=vpn"
+    assert Filtres(q="vpn", vue="liste").lien() == "q=vpn&vue=liste"
+    assert Filtres(q="vpn", page=2).lien() == "q=vpn&page=2"
 
 
 def test_arbre_des_resultats_fusionne_les_chaines_de_dossiers():

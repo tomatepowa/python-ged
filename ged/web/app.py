@@ -8,14 +8,14 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from ged import config as configuration
-from ged.arborescence import construire_arbre_resultats, dossier_parent, fichiers, fil_ariane, sources, trouver
+from ged.arborescence import construire_arbre_resultats, dossier_parent, fil_ariane
 from ged.recherche import DOCUMENTS_ARBRE_MAX, PAR_PAGE, Filtres, facettes, rechercher, statistiques, suggerer
 
 ICI = Path(__file__).parent
@@ -37,6 +37,12 @@ templates.env.filters["taille"] = taille_lisible
 # Version des fichiers statiques, ajoutée à leur URL (?v=...) : après une mise à jour, les
 # navigateurs rechargent le CSS et le JavaScript au lieu de garder l'ancienne version en cache
 templates.env.globals["version_statique"] = max(int(f.stat().st_mtime) for f in (ICI / "static").iterdir())
+def lien_dossier(source_id: int, chemin: str = "") -> str:
+    """Accueil avec la recherche limitée à un dossier (et ses sous-dossiers)."""
+    return "/?" + Filtres(dossier=f"{source_id}:{chemin}").lien()
+
+
+templates.env.globals["lien_dossier"] = lien_dossier
 templates.env.filters["date"] = lambda d: d.astimezone().strftime("%d/%m/%Y") if d else ""
 
 
@@ -68,6 +74,7 @@ def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
                 "SELECT id, categorie, libelle FROM tag WHERE id = ANY(%s) ORDER BY categorie, libelle",
                 (filtres.tags,),
             ).fetchall() if filtres.tags else [],
+            "libelle_dossier": libelle_du_dossier(conn, filtres),
         }
         return {**contexte, **contexte_vue(filtres, conn)}
 
@@ -100,18 +107,17 @@ def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
         vue: str = "",
         page: int = 1,
     ):
-        filtres = Filtres(q=q, pole=pole, famille=famille, tags=tag, dossier=dossier, vue=vue if vue == "arbre" else "", page=max(page, 1))
+        filtres = Filtres(q=q, pole=pole, famille=famille, tags=tag, dossier=dossier, vue="liste" if vue == "liste" else "arbre", page=max(page, 1))
         with pool.connection() as conn:
             contexte = contexte_resultats(filtres, conn)
             choix = facettes(conn)
-            libelle_dossier = libelle_du_dossier(conn, filtres)
         tags_par_categorie: dict[str, list[dict]] = {}
         for t in choix["tags"]:
             tags_par_categorie.setdefault(t["categorie"], []).append(t)
         return templates.TemplateResponse(
             request,
             "recherche.html",
-            {**contexte, "choix": choix, "tags_par_categorie": tags_par_categorie, "libelle_dossier": libelle_dossier},
+            {**contexte, "choix": choix, "tags_par_categorie": tags_par_categorie},
         )
 
     @app.get("/resultats", response_class=HTMLResponse)
@@ -126,7 +132,7 @@ def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
         page: int = 1,
     ):
         """Fragment HTML de la liste de résultats, pour la recherche pendant la frappe."""
-        filtres = Filtres(q=q, pole=pole, famille=famille, tags=tag, dossier=dossier, vue=vue if vue == "arbre" else "", page=max(page, 1))
+        filtres = Filtres(q=q, pole=pole, famille=famille, tags=tag, dossier=dossier, vue="liste" if vue == "liste" else "arbre", page=max(page, 1))
         with pool.connection() as conn:
             contexte = contexte_resultats(filtres, conn)
         return templates.TemplateResponse(request, contexte["gabarit"], contexte)
@@ -164,25 +170,10 @@ def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
             {"doc": doc, "tags": tags, "doublons": doublons, "dossier": dossier, "ariane": fil_ariane(dossier)},
         )
 
-    @app.get("/dossiers", response_class=HTMLResponse)
-    def dossiers(request: Request, source: int | None = None, chemin: str = "", tri: str = "nom", ordre: str = "asc"):
-        """Vue explorateur : arborescence à gauche, contenu du dossier à droite."""
-        chemin = chemin.strip("\\")
-        with pool.connection() as conn:
-            toutes = sources(conn)
-            courante = next((s for s in toutes if s["id"] == source), toutes[0] if toutes else None)
-            dossier = trouver(courante["arbre"], chemin) if courante else None
-            if courante and dossier is None:
-                raise HTTPException(404, "Dossier inconnu (ou sans document indexé)")
-            contenu = fichiers(conn, courante["id"], chemin, tri, ordre == "desc") if courante else []
-        return templates.TemplateResponse(
-            request,
-            "dossiers.html",
-            {
-                "sources": toutes, "source": courante, "dossier": dossier, "chemin": chemin,
-                "ariane": fil_ariane(chemin), "fichiers": contenu, "tri": tri, "ordre": ordre,
-            },
-        )
+    @app.get("/dossiers")
+    def dossiers(source: int | None = None, chemin: str = ""):
+        """Ancienne vue explorateur : remplacée par l'arborescence de l'accueil limitée au dossier."""
+        return RedirectResponse(lien_dossier(source, chemin) if source is not None else "/", status_code=301)
 
     @app.get("/document/{document_id}/fichier")
     def fichier(document_id: int):

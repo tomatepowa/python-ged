@@ -10,11 +10,14 @@ from urllib.parse import urlencode
 
 import psycopg
 
-from ged.arborescence import dossier_parent
+from ged.arborescence import dossier_parent, fil_ariane
 from ged.extraits import construire_motif, extraire
 from ged.texte import normaliser
 
 PAR_PAGE = 20
+# Niveaux de dossiers affichés pour chaque résultat : les premiers (pôle, thème...) situent
+# mieux un document que son dossier final
+NIVEAUX_CHEMIN = 3
 # Au-delà, la vue arborescence est tronquée (il faut affiner la recherche)
 DOCUMENTS_ARBRE_MAX = 5000
 # Guillemets, exclusion (-mot) ou OR : syntaxe "moteur de recherche", traitée par websearch_to_tsquery
@@ -29,17 +32,19 @@ class Filtres:
     tags: list[int] = field(default_factory=list)
     # Limite la recherche à un dossier et ses sous-dossiers : "<id source>:<chemin relatif>"
     dossier: str = ""
-    # Affichage des résultats : "" (liste) ou "arbre"
-    vue: str = ""
+    # Affichage des résultats : "arbre" (par défaut) ou "liste"
+    vue: str = "arbre"
     page: int = 1
 
     def lien(self, page: int | None = None) -> str:
         """Query string de cette recherche (pour la pagination et l'URL partageable)."""
         parametres = [
-            ("q", self.q), ("pole", self.pole), ("famille", self.famille), ("dossier", self.dossier), ("vue", self.vue),
+            ("q", self.q), ("pole", self.pole), ("famille", self.famille), ("dossier", self.dossier),
+            ("vue", "liste" if self.vue == "liste" else ""),
         ]
         parametres += [("tag", t) for t in self.tags]
-        parametres.append(("page", page or self.page))
+        if (page or self.page) > 1:
+            parametres.append(("page", page or self.page))
         return urlencode([(k, v) for k, v in parametres if v not in ("", None)])
 
     def dossier_cible(self) -> tuple[int, str] | None:
@@ -284,6 +289,9 @@ def _executer(
         ligne["extrait"] = extraire(ligne.pop("contenu"), motif)
         ligne["sous_titre"] = sous_titre(ligne["titre"], ligne["nom"])
         ligne["dossier"] = dossier_parent(ligne["chemin_relatif"])
+        niveaux = fil_ariane(ligne["dossier"])
+        ligne["debut_chemin"] = niveaux[:NIVEAUX_CHEMIN]
+        ligne["chemin_coupe"] = len(niveaux) > NIVEAUX_CHEMIN
     total = lignes[0]["total"] if lignes else 0
     return Resultats(lignes, total, mode, compte_tags=compte_tags)
 
@@ -336,6 +344,9 @@ def suggerer(conn: psycopg.Connection, q: str) -> dict:
             "limite": DOCUMENTS_SUGGERES_MAX,
         },
     ).fetchall()
+    for doc in documents:
+        niveaux = dossier_parent(doc.pop("chemin_relatif")).split("\\")
+        doc["debut_chemin"] = " › ".join(filter(None, niveaux[:NIVEAUX_CHEMIN])) + (" › …" if len(niveaux) > NIVEAUX_CHEMIN else "")
     return {"completions": completions, "documents": documents}
 
 

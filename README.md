@@ -33,8 +33,9 @@ Les fichiers ne sont **ni déplacés, ni modifiés** : l'arborescence actuelle r
 - **Classement** : un document dont le nom ou le titre contient les mots cherchés passe devant ceux qui les citent seulement dans le texte.
 - **Extraits surlignés** : chaque résultat montre le passage où apparaissent les mots cherchés.
 - **Filtres** : pôle (Métier, Infra, BI, ITO…), type de fichier, tags (un clic sur un tag affiche tous les documents qui le portent), dossier.
-- **Résultats en arborescence** : bascule « Liste / Arborescence » sur l'accueil ; l'arbre ne montre que les dossiers contenant des documents trouvés (recherche + tags + filtres), avec leur nombre, et se met à jour en temps réel. Les dossiers à un seul sous-dossier sont fusionnés (« Documents › Infra › Réseau ») pour rester lisibles.
-- **Explorateur** : arborescence des partages et contenu des dossiers, comme l'explorateur Windows (tri par nom, date, type, taille), avec recherche limitée à un dossier et ses sous-dossiers.
+- **Résultats en arborescence (vue par défaut)** : l'accueil range les documents trouvés dans leurs dossiers, avec le nombre de documents par dossier ; l'arbre suit la frappe et les filtres en temps réel. Sans recherche ni filtre, il montre toute la structure des partages. Un clic déplie un dossier ; le bouton 🔍 « Chercher ici », au survol, limite la recherche à ce dossier (⬆ pour remonter). Les dossiers à un seul sous-dossier sont fusionnés (« Documents › Infra › Réseau »). Une vue Liste, avec extraits surlignés, reste disponible.
+- **Chemins lisibles** : chaque résultat de la liste et des suggestions affiche ses 3 premiers dossiers (pôle, thème…), plus parlants que le dossier final ; chemin complet au survol.
+- **Filtres actifs visibles** au-dessus des résultats, retirables ; compteurs des tags recalculés à chaque recherche, les tags menant à zéro résultat sont grisés.
 - **Personnes** : auteur et dernier modificateur (propriétés Office / PDF), propriétaire du fichier.
 - **Droits d'accès** : utilisateurs et groupes autorisés (ou refusés) sur chaque fichier, lus dans les droits NTFS et traduits comme dans l'onglet Sécurité (Lecture, Modification, Contrôle total…), avec leur origine (héritée ou propre au fichier). Relus à chaque indexation.
 - **Tags automatiques** par dictionnaire de mots-clés ([`taxonomie.toml`](taxonomie.toml)) : logiciel, secteur (identité, soins, facturation…), type de note.
@@ -194,7 +195,7 @@ ged-dsi/
 │   ├── indexeur.py      # parcours des sources, indexation incrémentale
 │   ├── recherche.py     # requêtes plein texte, filtres, correction, suggestions
 │   ├── extraits.py      # extraits surlignés des résultats
-│   ├── arborescence.py  # vue explorateur (arbre des dossiers, contenu d'un dossier)
+│   ├── arborescence.py  # arbre des résultats, outils sur les chemins
 │   ├── droits.py        # propriétaire et droits NTFS (pywin32)
 │   ├── texte.py         # normalisation, détection du code documentaire
 │   └── web/             # application FastAPI, gabarits, CSS

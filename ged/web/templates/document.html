@@ -3,9 +3,9 @@
 
 {% block contenu %}
 <nav class="ariane" aria-label="Emplacement">
-  <a href="/dossiers?source={{ doc.source_id }}">{{ doc.source }}</a>
+  <a href="{{ lien_dossier(doc.source_id) }}">{{ doc.source }}</a>
   {% for nom, chemin in ariane %}
-  <span class="separateur">›</span><a href="/dossiers?source={{ doc.source_id }}&chemin={{ chemin | urlencode }}">{{ nom }}</a>
+  <span class="separateur">›</span><a href="{{ lien_dossier(doc.source_id, chemin) }}">{{ nom }}</a>
   {% endfor %}
 </nav>
 
@@ -15,7 +15,7 @@
   <div class="actions">
     <a class="bouton" href="/document/{{ doc.id }}/fichier" target="_blank">Ouvrir le fichier</a>
     <button type="button" class="bouton secondaire" data-copier="{{ doc.chemin }}">Copier le chemin</button>
-    <a class="bouton secondaire" href="/dossiers?source={{ doc.source_id }}&chemin={{ dossier | urlencode }}">Ouvrir le dossier</a>
+    <a class="bouton secondaire" href="{{ lien_dossier(doc.source_id, dossier) }}">Voir le dossier</a>
   </div>
 
   {% if doc.supprime_le %}

@@ -1,15 +1,28 @@
 {# Filtres actifs (au-dessus des résultats) et compteurs des tags pour la colonne de gauche.
    Les tags cochés se combinent en ET : sans ce rappel, un résultat vide est incompréhensible
    quand la case responsable est hors de l'écran. #}
-{% if tags_actifs or filtres.pole or filtres.famille %}
+{% set cible = filtres.dossier_cible() %}
+{% set nb_filtres = (tags_actifs | length) + (1 if filtres.pole else 0) + (1 if filtres.famille else 0) + (1 if cible else 0) %}
+{% if nb_filtres %}
 <div class="filtres-actifs">
   <span class="note">Filtres :</span>
+  {% if cible %}
+    {% set parties = libelle_dossier.split(" › ") %}
+    {% set court = parties[0] ~ " › … › " ~ parties[-2:] | join(" › ") if parties | length > 4 else libelle_dossier %}
+    <span class="pastille dossier" title="{{ libelle_dossier }}">📁 {{ court }}
+      {% if cible[1] %}
+      {% set parent = cible[1].rsplit("\\", 1)[0] if "\\" in cible[1] else "" %}
+      <button type="button" data-dossier="{{ cible[0] }}:{{ parent }}" title="Remonter au dossier parent">⬆</button>
+      {% endif %}
+      <button type="button" data-retirer="dossier" title="Chercher dans tous les dossiers">✕</button>
+    </span>
+  {% endif %}
   {% if filtres.pole %}<button type="button" class="pastille" data-retirer="pole">Pôle : {{ filtres.pole }} ✕</button>{% endif %}
   {% if filtres.famille %}<button type="button" class="pastille" data-retirer="famille">Type : {{ filtres.famille }} ✕</button>{% endif %}
   {% for t in tags_actifs %}
   <button type="button" class="pastille tag" data-retirer-tag="{{ t.id }}" title="{{ t.categorie }} – retirer ce filtre">{{ t.libelle }} ✕</button>
   {% endfor %}
-  {% if (tags_actifs | length) + (1 if filtres.pole else 0) + (1 if filtres.famille else 0) > 1 %}
+  {% if nb_filtres > 1 %}
   <button type="button" class="pastille vider" data-retirer="tout">Tout retirer</button>
   {% endif %}
 </div>

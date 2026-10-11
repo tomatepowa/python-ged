@@ -1,14 +1,23 @@
 {# Vue arborescence des résultats : seuls les dossiers contenant des documents trouvés.
-   Peu de résultats : tout est déplié. Beaucoup : seuls les deux premiers niveaux le sont. #}
+   Peu de résultats : tout est déplié. Beaucoup : seuls les deux premiers niveaux le sont.
+   Clic sur un dossier : il se déplie / se replie (navigation). Le bouton 🔍 qui apparaît au
+   survol limite la recherche à ce dossier. #}
 {% set tout_deplier = resultats.total <= 150 %}
 {% set icones = {"PDF": "📕", "Word": "📘", "Excel": "📗", "PowerPoint": "📙", "Image": "🖼️", "Mail": "✉️", "Video": "🎞️", "Archive": "🗜️"} %}
+
+{% macro entete_dossier(source_id, chemin, libelle, icone, nb) %}
+  <span class="nom" title="{{ libelle }}">{{ icone }} {{ libelle }}</span>
+  <button type="button" class="chercher-ici" data-dossier="{{ source_id }}:{{ chemin }}"
+          title="Chercher seulement dans « {{ libelle }} »">🔍 Chercher ici</button>
+  <span class="compte">{{ nb }}</span>
+{% endmacro %}
 
 {% macro liste_fichiers(fichiers, source_id, chemin) %}
   {% for f in fichiers[:30] %}
   <div class="arbre-fichier"><a href="/document/{{ f.id }}" title="{{ f.nom }}">{{ icones.get(f.famille, "📄") }} {{ f.nom }}</a></div>
   {% endfor %}
   {% if fichiers | length > 30 %}
-  <div class="arbre-fichier plus"><a href="/dossiers?source={{ source_id }}&chemin={{ chemin | urlencode }}">… et {{ fichiers | length - 30 }} autres dans ce dossier</a></div>
+  <div class="arbre-fichier plus"><a href="{{ lien_dossier(source_id, chemin) }}" data-dossier="{{ source_id }}:{{ chemin }}">… et {{ fichiers | length - 30 }} autres dans ce dossier</a></div>
   {% endif %}
 {% endmacro %}
 
@@ -16,9 +25,7 @@
   {% for b in liste %}
   <details class="arbre-dossier" {% if tout_deplier or profondeur < 2 %}open{% endif %}>
     <summary>
-      <span class="nom" title="{{ b.nom }}">📁 {{ b.nom }}</span>
-      <span class="compte">{{ b.nb_documents }}</span>
-      <a class="ouvrir" href="/dossiers?source={{ source_id }}&chemin={{ b.chemin | urlencode }}" title="Ouvrir dans l'explorateur">↗</a>
+      {{ entete_dossier(source_id, b.chemin, b.nom, "📁", b.nb_documents) }}
     </summary>
     <div class="arbre-contenu">
       {{ branches(b.enfants, source_id, profondeur + 1) }}
@@ -36,7 +43,7 @@
     {{ resultats.total }} document{{ "s" if resultats.total > 1 }} — rangés dans leurs dossiers
     {% if resultats.mode == "corrige" %}<span class="note">pour « <strong>{{ resultats.correction }}</strong> » (orthographe corrigée)</span>{% endif %}
     {% if resultats.mode == "approchant" %}<span class="note">(noms de fichiers approchants)</span>{% endif %}
-    {% if not tout_deplier %}<span class="note">— niveaux profonds repliés, cliquez pour déplier</span>{% endif %}
+    <span class="note">— 🔍 au survol d'un dossier pour y limiter la recherche{% if not tout_deplier %} ; niveaux profonds repliés{% endif %}</span>
   {% endif %}
 </p>
 {% if tronque %}<p class="avertissement">Affichage limité aux {{ resultats.total }} premiers documents : affinez la recherche ou les filtres.</p>{% endif %}
@@ -46,9 +53,7 @@
   {% for s in arbre %}
   <details class="arbre-dossier source" open>
     <summary>
-      <span class="nom">🗄️ {{ s.source }}</span>
-      <span class="compte">{{ s.nb_documents }}</span>
-      <a class="ouvrir" href="/dossiers?source={{ s.source_id }}" title="Ouvrir dans l'explorateur">↗</a>
+      {{ entete_dossier(s.source_id, "", s.source, "🗄️", s.nb_documents) }}
     </summary>
     <div class="arbre-contenu">
       {{ branches(s.enfants, s.source_id, 1) }}

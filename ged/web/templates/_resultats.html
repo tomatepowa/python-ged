@@ -28,7 +28,10 @@
   <div class="actions">
     <a class="bouton" href="/document/{{ d.id }}/fichier" target="_blank">Ouvrir</a>
     <button type="button" class="bouton secondaire" data-copier="{{ d.chemin }}">Copier le chemin</button>
-    <a class="chemin" href="/dossiers?source={{ d.source_id }}&chemin={{ d.dossier | urlencode }}" title="Ouvrir le dossier">{{ d.chemin_relatif }}</a>
+    <span class="debut-chemin" title="{{ d.chemin_relatif }}">
+      📁{% for nom, chemin in d.debut_chemin %}{{ " ›" if not loop.first }}
+      <a href="{{ lien_dossier(d.source_id, chemin) }}" data-dossier="{{ d.source_id }}:{{ chemin }}" title="Chercher dans « {{ nom }} »">{{ nom }}</a>{% else %} racine{% endfor %}{% if d.chemin_coupe %} › …{% endif %}
+    </span>
   </div>
 </article>
 {% endfor %}

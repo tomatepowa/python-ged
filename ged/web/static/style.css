@@ -384,5 +384,9 @@ a.badge.tag:hover { outline: 1px solid var(--tag-texte); }
 .fil-chemin a:hover { color: var(--accent); text-decoration: underline; }
 .suggestion .fil-chemin { flex: 0 1 auto; max-width: 55%; margin-left: auto; font: .75rem Consolas, monospace; }
 
-/* Tout déplier / tout replier */
-.arbre-actions { display: flex; gap: .4rem; margin-bottom: .5rem; }
+/* Dossiers seulement / tout déplier / tout replier */
+.arbre-actions { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .5rem; }
+.arbre-actions .pastille.actif { background: var(--accent); color: var(--accent-texte); }
+/* « Dossiers seulement » : fichiers masqués, sauf dans les dossiers sur lesquels on a cliqué */
+.dossiers-seuls .arbre-fichier { display: none; }
+.dossiers-seuls .fichiers-visibles > .arbre-contenu > .arbre-fichier { display: block; }

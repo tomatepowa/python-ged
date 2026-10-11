@@ -46,10 +46,36 @@
     });
   }
 
+  // --- Arborescence : « dossiers seulement » (par défaut) ou avec les fichiers -----------------
+  // Le choix est mémorisé par le navigateur et réappliqué à chaque nouvelle recherche.
+
+  let modeArbre = 'dossiers';
+  try { modeArbre = localStorage.getItem('ged.modeArbre') || 'dossiers'; } catch (e) { /* stockage indisponible */ }
+
+  function appliquerModeArbre() {
+    const arbre = zone.querySelector('.arbre-resultats');
+    if (!arbre) return;
+    const dossiersSeuls = modeArbre === 'dossiers';
+    arbre.classList.toggle('dossiers-seuls', dossiersSeuls);
+    // Mode fichiers : dépliage proposé par le serveur (tout si peu de résultats, sinon 2 niveaux)
+    arbre.querySelectorAll('details.arbre-dossier').forEach((d) => {
+      d.open = dossiersSeuls || d.classList.contains('source') || d.hasAttribute('data-ouvert');
+    });
+    zone.querySelectorAll('[data-deplier]').forEach((b) => {
+      b.classList.toggle('actif', b.dataset.deplier === (dossiersSeuls ? 'dossiers' : 'tout'));
+    });
+  }
+
+  function choisirModeArbre(mode) {
+    modeArbre = mode;
+    try { localStorage.setItem('ged.modeArbre', mode); } catch (e) { /* stockage indisponible */ }
+  }
+
   function afficherResultats(html, p, defiler) {
     zone.innerHTML = html;
     zone.classList.remove('chargement');
     majCompteurs();
+    appliquerModeArbre();
     const qs = p.toString();
     history.replaceState(null, '', qs ? '/?' + qs : '/');
     document.title = (p.get('q') ? p.get('q') + ' – ' : '') + 'GED DSI';
@@ -226,13 +252,18 @@
   });
 
   zone.addEventListener('click', (e) => {
-    // Tout déplier / tout replier l'arborescence (les sources restent ouvertes au repli)
+    // Dossiers seulement / tout déplier / tout replier (les sources restent ouvertes au repli)
     const deplier = e.target.closest('[data-deplier]');
     if (deplier) {
-      const ouvrir = deplier.dataset.deplier === 'tout';
-      zone.querySelectorAll('details.arbre-dossier').forEach((d) => {
-        d.open = ouvrir || d.classList.contains('source');
-      });
+      const quoi = deplier.dataset.deplier;
+      if (quoi === 'rien') {
+        zone.querySelectorAll('details.arbre-dossier').forEach((d) => { d.open = d.classList.contains('source'); });
+      } else {
+        choisirModeArbre(quoi === 'dossiers' ? 'dossiers' : 'fichiers');
+        appliquerModeArbre();
+        zone.querySelectorAll('details.arbre-dossier').forEach((d) => { d.open = true; });
+        zone.querySelectorAll('.fichiers-visibles').forEach((d) => d.classList.remove('fichiers-visibles'));
+      }
       return;
     }
     // Dossier de l'arborescence (ou chemin d'un résultat, ou ⬆) : la recherche y est limitée
@@ -241,6 +272,18 @@
       e.preventDefault(); // empêche aussi le dépliage du dossier quand on clique sur son nom
       formulaire.elements.dossier.value = dossier.dataset.dossier;
       chercher(parametres());
+      return;
+    }
+    // Mode « dossiers seulement » : le premier clic sur un dossier déplié affiche ses fichiers
+    // au lieu de le replier (le clic suivant le replie, comme d'habitude)
+    const entete = e.target.closest('.dossiers-seuls details.arbre-dossier > summary');
+    if (entete) {
+      const d = entete.parentElement;
+      const aDesFichiers = d.querySelector(':scope > .arbre-contenu > .arbre-fichier');
+      if (d.open && aDesFichiers && !d.classList.contains('fichiers-visibles')) {
+        e.preventDefault();
+        d.classList.add('fichiers-visibles');
+      }
       return;
     }
     // Étiquettes des filtres actifs : la croix retire le filtre
@@ -284,4 +327,5 @@
   // Curseur en fin de texte quand on revient sur une recherche existante
   champ.setSelectionRange(champ.value.length, champ.value.length);
   majCompteurs();
+  appliquerModeArbre();
 })();

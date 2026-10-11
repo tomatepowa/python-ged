@@ -1,5 +1,8 @@
 {# Vue arborescence des résultats : seuls les dossiers contenant des documents trouvés.
-   Peu de résultats : tout est déplié. Beaucoup : seuls les deux premiers niveaux le sont.
+   Par défaut « dossiers seulement » : tous les dossiers dépliés, fichiers masqués (un clic sur
+   un dossier affiche ses fichiers). En mode fichiers (« Tout déplier » une fois choisi, mémorisé
+   par le navigateur) : peu de résultats, tout est déplié ; beaucoup, seuls les deux premiers
+   niveaux le sont (data-ouvert).
    Clic sur un dossier : il se déplie / se replie (navigation). Le bouton 🔍 qui apparaît au
    survol limite la recherche à ce dossier ; dans une chaîne fusionnée « a › b › c », un clic
    sur a ou b limite la recherche à ce dossier. #}
@@ -27,7 +30,7 @@
 
 {% macro branches(liste, source_id, profondeur) %}
   {% for b in liste %}
-  <details class="arbre-dossier" {% if tout_deplier or profondeur < 2 %}open{% endif %}>
+  <details class="arbre-dossier" open{% if tout_deplier or profondeur < 2 %} data-ouvert{% endif %}>
     <summary>
       {{ entete_dossier(source_id, b.chemin, b.nom, "📁", b.nb_documents, b.ancetres) }}
     </summary>
@@ -47,17 +50,18 @@
     {{ resultats.total }} document{{ "s" if resultats.total > 1 }} — rangés dans leurs dossiers
     {% if resultats.mode == "corrige" %}<span class="note">pour « <strong>{{ resultats.correction }}</strong> » (orthographe corrigée)</span>{% endif %}
     {% if resultats.mode == "approchant" %}<span class="note">(noms de fichiers approchants)</span>{% endif %}
-    <span class="note">— 🔍 au survol d'un dossier pour y limiter la recherche{% if not tout_deplier %} ; niveaux profonds repliés{% endif %}</span>
+    <span class="note">— 🔍 au survol d'un dossier pour y limiter la recherche</span>
   {% endif %}
 </p>
 {% if tronque %}<p class="avertissement">Affichage limité aux {{ resultats.total }} premiers documents : affinez la recherche ou les filtres.</p>{% endif %}
 
 {% if arbre %}
 <div class="arbre-actions">
+  <button type="button" class="pastille" data-deplier="dossiers" title="Tous les dossiers dépliés, sans les fichiers : cliquez sur un dossier pour voir ses fichiers">📁 Dossiers seulement</button>
   <button type="button" class="pastille" data-deplier="tout">⊞ Tout déplier</button>
   <button type="button" class="pastille" data-deplier="rien">⊟ Tout replier</button>
 </div>
-<div class="arbre-resultats">
+<div class="arbre-resultats dossiers-seuls">
   {% for s in arbre %}
   <details class="arbre-dossier source" open>
     <summary>

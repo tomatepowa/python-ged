@@ -52,11 +52,16 @@ def est_ignore(chemin: Path, exclusions: list[str]) -> bool:
     return any(fnmatch.fnmatch(str(chemin), motif) for motif in exclusions)
 
 
-def parcourir(racine: Path, exclusions: list[str]) -> Iterator[Path]:
-    """Fichiers indexables sous `racine`, en sautant dossiers système, bruit et fichiers sensibles."""
+def parcourir(racine: Path, exclusions: list[str], inaccessibles: list[Path] | None = None) -> Iterator[Path]:
+    """Fichiers indexables sous `racine`, en sautant dossiers système, bruit et fichiers sensibles.
+
+    Les dossiers impossibles à lister sont ajoutés à `inaccessibles`.
+    """
 
     def signaler(erreur: OSError) -> None:
         log.warning("Inaccessible : %s (%s)", erreur.filename, erreur.strerror)
+        if inaccessibles is not None and erreur.filename:
+            inaccessibles.append(Path(erreur.filename))
 
     for dossier, sous_dossiers, fichiers in os.walk(racine, onerror=signaler):
         sous_dossiers[:] = sorted(d for d in sous_dossiers if d.lower() not in DOSSIERS_SYSTEME)
@@ -123,27 +128,39 @@ class Indexeur:
     def _indexer_source(self, source: Source, forcer: bool) -> Counter:
         bilan: Counter = Counter()
         source_id = self._enregistrer_source(source)
-        debut = datetime.now(timezone.utc)
+        # Heure du serveur PostgreSQL, comme vu_le (now()) : l'horloge de ce poste peut être décalée.
+        # Le commit clôt la transaction : les suivantes démarrent après `debut`.
+        debut = self.conn.execute("SELECT clock_timestamp() AS t").fetchone()["t"]
+        self.conn.commit()
         log.info("Indexation de %s (%s)", source.nom, source.chemin)
 
-        for i, chemin in enumerate(parcourir(source.chemin, self.cfg.exclure), start=1):
+        dossiers_inaccessibles: list[Path] = []
+        fichiers_illisibles: list[str] = []
+        for i, chemin in enumerate(parcourir(source.chemin, self.cfg.exclure, dossiers_inaccessibles), start=1):
             try:
                 bilan[self._indexer_fichier(source, source_id, chemin, forcer)] += 1
             except OSError as exc:
                 log.warning("Illisible : %s (%s)", chemin, exc)
                 bilan["illisible"] += 1
+                fichiers_illisibles.append(str(chemin))
             if i % COMMIT_TOUS_LES == 0:
                 self.conn.commit()
                 log.info("  %d fichiers parcourus", i)
 
-        # Les fichiers non revus pendant ce passage ont disparu de la source (ou sont désormais ignorés)
+        # Les fichiers non revus pendant ce passage ont disparu de la source (ou sont désormais ignorés).
+        # Sauf ceux qu'une erreur d'accès (coupure réseau, droits) a empêché de voir : ils restent
+        # dans l'index en attendant le prochain passage.
+        prefixes = [str(d).rstrip("\\") + "\\" for d in dossiers_inaccessibles]
         supprimes = self.conn.execute(
             "UPDATE document SET supprime_le = now() "
-            "WHERE source_id = %s AND vu_le < %s AND supprime_le IS NULL",
-            (source_id, debut),
+            "WHERE source_id = %s AND vu_le < %s AND supprime_le IS NULL "
+            "AND chemin <> ALL(%s::text[]) "
+            "AND NOT EXISTS (SELECT 1 FROM unnest(%s::text[]) AS p(prefixe) WHERE starts_with(chemin, p.prefixe))",
+            (source_id, debut, fichiers_illisibles, prefixes),
         ).rowcount
         self.conn.commit()
         bilan["supprime"] += supprimes
+        bilan["dossiers_inaccessibles"] += len(dossiers_inaccessibles)
         return bilan
 
     def _enregistrer_source(self, source: Source) -> int:
@@ -181,10 +198,12 @@ class Indexeur:
             )
             return "inchange"
 
-        signature = empreinte(chemin)
         if stat.st_size > self.cfg.taille_max_mo * 1024 * 1024:
+            # Pas d'empreinte : la calculer obligerait à lire tout le fichier sur le réseau
+            signature = None
             resultat = Resultat(statut="non_supporte", erreur=f"Fichier de plus de {self.cfg.taille_max_mo} Mo")
         else:
+            signature = empreinte(chemin)
             resultat = extraire(chemin, self.cfg.soffice)
 
         # Contenu identique déjà passé en OCR : on garde le résultat (l'OCR est lent)
@@ -304,9 +323,12 @@ class Indexeur:
         bilan: Counter = Counter()
         rafraichir_vocabulaire(self.conn)
         vocabulaire = self._vocabulaire()
-        documents = self.conn.execute(
+        # Curseur côté serveur : les documents arrivent par paquets au lieu d'être tous chargés en mémoire
+        documents = self.conn.cursor(name="recalcul")
+        documents.itersize = 200
+        documents.execute(
             "SELECT id, titre, chemin_relatif, statut, methode, contenu FROM document WHERE supprime_le IS NULL"
-        ).fetchall()
+        )
         for doc in documents:
             contenu = doc["contenu"] or ""
             if doc["methode"] == "ocr" and doc["statut"] == "indexe" and not texte_exploitable(contenu, vocabulaire):
@@ -323,6 +345,7 @@ class Indexeur:
                 )
             self._appliquer_tags(doc["id"], f"{doc['titre'] or ''} {doc['chemin_relatif']}", contenu)
             bilan["recalcule"] += 1
+        documents.close()
         self.conn.commit()
         bilan["vocabulaire"] = rafraichir_vocabulaire(self.conn)
         return bilan

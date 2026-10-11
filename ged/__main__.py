@@ -94,6 +94,7 @@ def _afficher_bilan(titre: str, bilan) -> None:
         "supprime": "disparus de la source",
         "illisible": "illisibles (droits ?)",
         "sources_inaccessibles": "sources inaccessibles",
+        "dossiers_inaccessibles": "dossiers inaccessibles (contenu conservé dans l'index)",
     }
     print(f"\n{titre} :")
     for cle, nb in sorted(bilan.items(), key=lambda x: -x[1]):

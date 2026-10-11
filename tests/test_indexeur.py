@@ -71,3 +71,9 @@ def test_config_exemple_valide():
     assert [s.pole for s in cfg.sources] == ["Métier", "Infra"]
     assert str(cfg.sources[0].chemin) == r"\\nas\metier\ged"
     assert cfg.taxonomie == racine / "taxonomie.toml"
+
+
+def test_parcourir_signale_les_dossiers_inaccessibles(tmp_path):
+    inaccessibles: list[Path] = []
+    assert list(parcourir(tmp_path / "absent", [], inaccessibles)) == []
+    assert inaccessibles == [tmp_path / "absent"]

@@ -11,7 +11,9 @@ import email
 import email.policy
 import os
 import re
+import shutil
 import subprocess
+import sys
 import tempfile
 import zipfile
 from dataclasses import dataclass
@@ -293,20 +295,50 @@ def _conversion(chemin: Path, soffice: str | None) -> Resultat:
         return Resultat(statut="non_supporte", erreur="Ancien format : LibreOffice non configuré")
 
     with tempfile.TemporaryDirectory(prefix="ged_") as dossier:
+        # LibreOffice travaille sur une copie locale : il pose un fichier verrou (.~lock.xxx#)
+        # à côté du document qu'il ouvre, et le laisse en place s'il plante ou est interrompu
+        entree = Path(dossier, "entree")
+        entree.mkdir()
+        copie = Path(shutil.copyfile(chemin, entree / chemin.name))
+        sortie = Path(dossier, "sortie")
         # Profil LibreOffice dédié : évite les conflits avec une instance ouverte par l'utilisateur
         profil = Path(dossier, "profil").as_uri()
-        subprocess.run(
+        _lancer_libreoffice(
             [soffice, f"-env:UserInstallation={profil}", "--headless", "--norestore",
-             "--convert-to", "pdf", "--outdir", dossier, str(chemin)],
-            check=True, capture_output=True, timeout=180, env=_ENV_LIBREOFFICE,
+             "--convert-to", "pdf", "--outdir", str(sortie), str(copie)]
         )
-        pdf = Path(dossier, chemin.stem + ".pdf")
+        pdf = Path(sortie, chemin.stem + ".pdf")
         if not pdf.is_file():
             return Resultat(statut="erreur", erreur="Conversion LibreOffice sans résultat")
         resultat = _pdf(pdf)
 
     resultat.methode = "conversion"
     return resultat
+
+
+DELAI_CONVERSION = 180  # secondes
+
+
+def _lancer_libreoffice(commande: list[str]) -> None:
+    """Lance LibreOffice et l'arrête complètement s'il dépasse le délai.
+
+    Sous Windows, soffice.exe démarre soffice.bin, qui fait le vrai travail : tuer soffice.exe
+    seul (ce que fait subprocess.run en cas de délai dépassé) laisserait soffice.bin tourner.
+    """
+    processus = subprocess.Popen(
+        commande, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=_ENV_LIBREOFFICE
+    )
+    try:
+        _, erreurs = processus.communicate(timeout=DELAI_CONVERSION)
+    except subprocess.TimeoutExpired:
+        if sys.platform == "win32":
+            # /T : tout l'arbre de processus
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(processus.pid)], capture_output=True)
+        processus.kill()
+        processus.communicate()
+        raise
+    if processus.returncode:
+        raise subprocess.CalledProcessError(processus.returncode, commande, stderr=erreurs)
 
 
 def _dedoublonner(lignes: list[str]) -> list[str]:

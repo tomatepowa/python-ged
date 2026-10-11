@@ -1,4 +1,5 @@
 import zipfile
+from pathlib import Path
 
 import pymupdf
 import pytest
@@ -154,3 +155,40 @@ def test_texte_ocr_exploitable():
     assert not texte_exploitable("= Aa 7 RAR ÉAE LORS ÈS EX ÉNesN PR etALES\nee ET | ; te", vocabulaire)
     # Vocabulaire trop petit pour juger : on garde tout texte non vide
     assert texte_exploitable("ee ET", {"facture"})
+
+
+def test_conversion_sur_une_copie_hors_du_partage(tmp_path, monkeypatch):
+    import ged.extraction as extraction
+
+    partage = tmp_path / "partage"
+    partage.mkdir()
+    chemin = partage / "vieux.doc"
+    chemin.write_bytes(b"\xd0\xcf\x11\xe0")
+    soffice = tmp_path / "soffice.exe"
+    soffice.write_bytes(b"")
+    recus = []
+
+    def faux_libreoffice(commande):
+        entree, sortie = Path(commande[-1]), Path(commande[commande.index("--outdir") + 1])
+        recus.append(entree)
+        sortie.mkdir()
+        with pymupdf.open() as pdf:
+            pdf.new_page().insert_text((72, 72), "Procédure de redémarrage du serveur " * 3)
+            pdf.save(sortie / "vieux.pdf")
+
+    monkeypatch.setattr(extraction, "_lancer_libreoffice", faux_libreoffice)
+    r = extraire(chemin, soffice=str(soffice))
+    assert r.methode == "conversion" and "redémarrage" in r.contenu
+    assert recus[0].name == "vieux.doc" and recus[0].parent != partage
+    assert [p.name for p in partage.iterdir()] == ["vieux.doc"]
+
+
+def test_libreoffice_arrete_au_dela_du_delai(monkeypatch):
+    import subprocess
+    import sys
+
+    import ged.extraction as extraction
+
+    monkeypatch.setattr(extraction, "DELAI_CONVERSION", 1)
+    with pytest.raises(subprocess.TimeoutExpired):
+        extraction._lancer_libreoffice([sys.executable, "-c", "import time; time.sleep(30)"])

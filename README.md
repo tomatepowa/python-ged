@@ -8,8 +8,50 @@ Les fichiers ne sont **ni déplacés, ni modifiés** : l'arborescence actuelle r
 
 ---
 
+## Aperçu
+
+*Captures réalisées avec des documents fictifs ([`outils/demo`](outils/demo)).*
+
+**Accueil : toute l'arborescence des partages, filtrable en temps réel**
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/captures/accueil-clair.png">
+  <img src="docs/captures/accueil.png" alt="Accueil en arborescence">
+</picture>
+
+**Recherche : les documents trouvés restent rangés dans leurs dossiers**
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/captures/recherche-arborescence-clair.png">
+  <img src="docs/captures/recherche-arborescence.png" alt="Résultats en arborescence">
+</picture>
+
+**Vue liste : extraits surlignés, code documentaire et tags**
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/captures/recherche-liste-clair.png">
+  <img src="docs/captures/recherche-liste.png" alt="Résultats en liste">
+</picture>
+
+**Suggestions pendant la frappe**
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/captures/suggestions-clair.png">
+  <img src="docs/captures/suggestions.png" alt="Suggestions">
+</picture>
+
+**Fiche d'un document : emplacement, personnes, droits NTFS, texte extrait**
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/captures/document-clair.png">
+  <img src="docs/captures/document.png" alt="Fiche document">
+</picture>
+
+---
+
 ## Sommaire
 
+- [Aperçu](#aperçu)
 - [Fonctionnalités](#fonctionnalités)
 - [Architecture](#architecture)
 - [Prérequis](#prérequis)
@@ -33,7 +75,7 @@ Les fichiers ne sont **ni déplacés, ni modifiés** : l'arborescence actuelle r
 - **Classement** : un document dont le nom ou le titre contient les mots cherchés passe devant ceux qui les citent seulement dans le texte.
 - **Extraits surlignés** : chaque résultat montre le passage où apparaissent les mots cherchés.
 - **Filtres** : pôle (Métier, Infra, BI, ITO…), type de fichier, tags (un clic sur un tag affiche tous les documents qui le portent), dossier.
-- **Résultats en arborescence (vue par défaut)** : l'accueil range les documents trouvés dans leurs dossiers, avec le nombre de documents par dossier ; l'arbre suit la frappe et les filtres en temps réel. Sans recherche ni filtre, il montre toute la structure des partages. Un clic déplie un dossier ; le bouton 🔍 « Chercher ici », au survol, limite la recherche à ce dossier (⬆ pour remonter). Les dossiers à un seul sous-dossier sont fusionnés (« Documents › Infra › Réseau »). Une vue Liste, avec extraits surlignés, reste disponible.
+- **Résultats en arborescence (vue par défaut)** : l'accueil range les documents trouvés dans leurs dossiers, avec le nombre de documents par dossier ; l'arbre suit la frappe et les filtres en temps réel. Sans recherche ni filtre, il montre toute la structure des partages. Par défaut, seuls les dossiers sont dépliés (« Dossiers seulement ») : un clic sur un dossier affiche ses fichiers ; « Tout déplier » montre tout, et le choix est retenu par le navigateur. Le bouton 🔍 « Chercher ici », au survol, limite la recherche à ce dossier (⬆ pour remonter). Les dossiers à un seul sous-dossier sont fusionnés (« Documents › Infra › Réseau »), chacun restant cliquable pour y limiter la recherche. Une vue Liste, avec extraits surlignés, reste disponible.
 - **Chemins lisibles** : chaque résultat de la liste et des suggestions affiche son chemin en priorisant les 4 premiers dossiers (pôle, thème…) et le dossier final ; les dossiers intermédiaires se réduisent en « … » si la place manque ; chemin complet au survol.
 - **Filtres actifs visibles** au-dessus des résultats, retirables ; compteurs des tags recalculés à chaque recherche, les tags menant à zéro résultat sont grisés.
 - **Personnes** : auteur et dernier modificateur (propriétés Office / PDF), propriétaire du fichier.
@@ -42,7 +84,7 @@ Les fichiers ne sont **ni déplacés, ni modifiés** : l'arborescence actuelle r
 - **Code documentaire** détecté dans l'en-tête ou le début du texte (format `DSI-INFRA-NT-001-v02`).
 - **OCR** des PDF scannés et des images (captures d'écran, photos). Les images sans texte lisible (photos, dessins, schémas) sont détectées et leur « texte » OCR, qui ne serait que du bruit, est écarté.
 - **Doublons** : la fiche d'un document signale ses copies identiques ailleurs dans les partages.
-- **Indexation incrémentale** : seuls les fichiers nouveaux ou modifiés sont relus ; les fichiers supprimés disparaissent des résultats.
+- **Indexation incrémentale** : seuls les fichiers nouveaux ou modifiés sont relus ; les fichiers supprimés disparaissent des résultats. Un fichier renommé ou déplacé est reconnu à son empreinte : il garde sa fiche, son texte OCR et ses tags manuels.
 - **Sécurité** : coffres KeePass, clés privées et certificats (`.kdbx`, `.pfx`, `.pem`…) ne sont jamais indexés ; les corbeilles et instantanés du NAS sont ignorés.
 
 ## Architecture
@@ -226,6 +268,8 @@ ged-dsi/
 │   └── web/             # application FastAPI, gabarits, CSS
 ├── outils/inventaire/   # script PowerShell d'état des lieux
 ├── outils/installation/ # installation sans droits admin et commandes du quotidien
+├── outils/demo/         # documents fictifs et captures d'écran du README
+├── docs/captures/       # captures d'écran (thèmes sombre et clair)
 ├── tests/
 ├── config.exemple.toml
 ├── taxonomie.toml

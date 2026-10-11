@@ -32,9 +32,24 @@
     return p;
   }
 
+  // Compteurs des tags (colonne de gauche) : nombre de résultats si on cochait ce tag en plus.
+  // Les tags qui mèneraient à zéro résultat sont grisés, sauf s'ils sont déjà cochés.
+  function majCompteurs() {
+    const donnees = document.getElementById('compte-tags');
+    if (!donnees) return;
+    const comptes = JSON.parse(donnees.textContent);
+    formulaire.querySelectorAll('input[name=tag]').forEach((caseTag) => {
+      const nb = comptes[caseTag.value] || 0;
+      const libelle = caseTag.closest('.case');
+      libelle.querySelector('.nb').textContent = nb;
+      libelle.classList.toggle('vide', nb === 0 && !caseTag.checked);
+    });
+  }
+
   function afficherResultats(html, p, defiler) {
     zone.innerHTML = html;
     zone.classList.remove('chargement');
+    majCompteurs();
     const qs = p.toString();
     history.replaceState(null, '', qs ? '/?' + qs : '/');
     document.title = (p.get('q') ? p.get('q') + ' – ' : '') + 'GED DSI';
@@ -198,6 +213,19 @@
   });
 
   zone.addEventListener('click', (e) => {
+    // Étiquettes des filtres actifs : la croix retire le filtre
+    const retirerTag = e.target.closest('[data-retirer-tag]');
+    const retirer = e.target.closest('[data-retirer]');
+    if (retirerTag || retirer) {
+      const quoi = retirer ? retirer.dataset.retirer : null;
+      formulaire.querySelectorAll('input[name=tag]').forEach((c) => {
+        if (quoi === 'tout' || (retirerTag && c.value === retirerTag.dataset.retirerTag)) c.checked = false;
+      });
+      if (quoi === 'pole' || quoi === 'tout') formulaire.elements.pole.value = '';
+      if (quoi === 'famille' || quoi === 'tout') formulaire.elements.famille.value = '';
+      chercher();
+      return;
+    }
     const page = e.target.closest('a[data-page]');
     if (page) {
       e.preventDefault();
@@ -223,4 +251,5 @@
 
   // Curseur en fin de texte quand on revient sur une recherche existante
   champ.setSelectionRange(champ.value.length, champ.value.length);
+  majCompteurs();
 })();

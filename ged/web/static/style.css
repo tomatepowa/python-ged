@@ -400,3 +400,20 @@ a.badge.tag:hover { outline: 1px solid var(--tag-texte); }
 .arbre-fichier a { text-decoration: none; }
 .arbre-fichier a:hover { text-decoration: underline; }
 .arbre-fichier.plus a { color: var(--texte-doux); font-style: italic; }
+
+/* Filtres actifs au-dessus des résultats */
+.filtres-actifs { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin-bottom: .75rem; }
+.pastille {
+  padding: .2rem .65rem;
+  border-radius: 999px;
+  background: var(--badge);
+  color: var(--texte);
+  font-size: .85rem;
+  font-weight: 500;
+}
+.pastille.tag { background: var(--tag); color: var(--tag-texte); }
+.pastille:hover { outline: 1px solid var(--accent); }
+.pastille.vider { background: none; color: var(--accent); text-decoration: underline; }
+
+/* Tag qui mènerait à zéro résultat */
+.case.vide { opacity: .4; }

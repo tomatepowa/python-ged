@@ -1,0 +1,21 @@
+{# Filtres actifs (au-dessus des résultats) et compteurs des tags pour la colonne de gauche.
+   Les tags cochés se combinent en ET : sans ce rappel, un résultat vide est incompréhensible
+   quand la case responsable est hors de l'écran. #}
+{% if tags_actifs or filtres.pole or filtres.famille %}
+<div class="filtres-actifs">
+  <span class="note">Filtres :</span>
+  {% if filtres.pole %}<button type="button" class="pastille" data-retirer="pole">Pôle : {{ filtres.pole }} ✕</button>{% endif %}
+  {% if filtres.famille %}<button type="button" class="pastille" data-retirer="famille">Type : {{ filtres.famille }} ✕</button>{% endif %}
+  {% for t in tags_actifs %}
+  <button type="button" class="pastille tag" data-retirer-tag="{{ t.id }}" title="{{ t.categorie }} – retirer ce filtre">{{ t.libelle }} ✕</button>
+  {% endfor %}
+  {% if (tags_actifs | length) + (1 if filtres.pole else 0) + (1 if filtres.famille else 0) > 1 %}
+  <button type="button" class="pastille vider" data-retirer="tout">Tout retirer</button>
+  {% endif %}
+</div>
+{% if resultats.total == 0 and tags_actifs | length > 1 %}
+<p class="avertissement">Aucun document ne porte à la fois
+  {% for t in tags_actifs %}« {{ t.libelle }} »{{ " et " if not loop.last }}{% endfor %} : retirez l'un de ces filtres.</p>
+{% endif %}
+{% endif %}
+<script type="application/json" id="compte-tags">{{ resultats.compte_tags | tojson }}</script>

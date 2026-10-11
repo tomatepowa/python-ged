@@ -28,6 +28,7 @@
   {% endfor %}
 {% endmacro %}
 
+{% include "_filtres_actifs.html" %}
 <p class="resume">
   {% if resultats.total == 0 %}
     Aucun document ne correspond{% if filtres.q %} à « {{ filtres.q }} »{% endif %}. Retirez des filtres ou essayez un autre mot.
@@ -40,6 +41,7 @@
 </p>
 {% if tronque %}<p class="avertissement">Affichage limité aux {{ resultats.total }} premiers documents : affinez la recherche ou les filtres.</p>{% endif %}
 
+{% if arbre %}
 <div class="arbre-resultats">
   {% for s in arbre %}
   <details class="arbre-dossier source" open>
@@ -55,3 +57,4 @@
   </details>
   {% endfor %}
 </div>
+{% endif %}

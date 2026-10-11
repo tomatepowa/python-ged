@@ -63,6 +63,15 @@ def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
     app.mount("/static", StaticFiles(directory=ICI / "static"), name="static")
 
     def contexte_resultats(filtres: Filtres, conn) -> dict:
+        contexte = {
+            "tags_actifs": conn.execute(
+                "SELECT id, categorie, libelle FROM tag WHERE id = ANY(%s) ORDER BY categorie, libelle",
+                (filtres.tags,),
+            ).fetchall() if filtres.tags else [],
+        }
+        return {**contexte, **contexte_vue(filtres, conn)}
+
+    def contexte_vue(filtres: Filtres, conn) -> dict:
         if filtres.vue == "arbre":
             resultats = rechercher(conn, filtres, tous=True)
             return {

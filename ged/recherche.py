@@ -56,6 +56,9 @@ class Resultats:
     mode: str
     # Requête réellement utilisée quand les mots tapés ont été corrigés
     correction: str | None = None
+    # Pour chaque tag : nombre de documents trouvés qui le portent, c'est-à-dire le nombre de
+    # résultats si on cochait ce tag en plus (les tags se combinent en ET)
+    compte_tags: dict[int, int] = field(default_factory=dict)
 
 
 def decouper(q: str) -> list[str]:
@@ -221,6 +224,21 @@ def _executer(
         parametres["dossier_source"] = cible[0]
         parametres["dossier_prefixe"] = cible[1] + "\\" if cible[1] else ""
 
+    compte_tags = {
+        ligne["tag_id"]: ligne["nb"]
+        for ligne in conn.execute(
+            f"""
+            SELECT dt.tag_id, count(*) AS nb
+            FROM document d
+            JOIN source s ON s.id = d.source_id
+            JOIN document_tag dt ON dt.document_id = d.id
+            WHERE {' AND '.join(conditions)}
+            GROUP BY dt.tag_id
+            """,
+            parametres,
+        )
+    }
+
     if tous:
         # Vue arborescence : tous les documents trouvés, juste de quoi placer chacun dans l'arbre
         lignes = conn.execute(
@@ -233,7 +251,7 @@ def _executer(
             """,
             {**parametres, "max_arbre": DOCUMENTS_ARBRE_MAX},
         ).fetchall()
-        return Resultats(lignes, len(lignes), mode)
+        return Resultats(lignes, len(lignes), mode, compte_tags=compte_tags)
 
     # En deux temps : 1) classer tous les documents trouvés (rapide, index GIN), 2) ne lire le
     # texte et les tags que pour la page affichée. L'extrait surligné est fabriqué en Python
@@ -267,7 +285,7 @@ def _executer(
         ligne["sous_titre"] = sous_titre(ligne["titre"], ligne["nom"])
         ligne["dossier"] = dossier_parent(ligne["chemin_relatif"])
     total = lignes[0]["total"] if lignes else 0
-    return Resultats(lignes, total, mode)
+    return Resultats(lignes, total, mode, compte_tags=compte_tags)
 
 
 COMPLETIONS_MAX = 6

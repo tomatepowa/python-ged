@@ -50,8 +50,14 @@
       <button type="button" class="effacer" id="effacer-filtres">Effacer les filtres</button>
     </aside>
 
-    <section class="resultats" id="resultats" aria-live="polite">
-      {% include "_resultats.html" %}
+    <section class="colonne-resultats">
+      <div class="vues" role="radiogroup" aria-label="Affichage des résultats">
+        <label><input type="radio" name="vue" value="" {% if filtres.vue != "arbre" %}checked{% endif %}> ☰ Liste</label>
+        <label><input type="radio" name="vue" value="arbre" {% if filtres.vue == "arbre" %}checked{% endif %}> 🌳 Arborescence</label>
+      </div>
+      <div class="resultats" id="resultats" aria-live="polite">
+        {% include gabarit %}
+      </div>
     </section>
   </div>
 </form>

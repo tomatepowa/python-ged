@@ -80,3 +80,23 @@ def test_filtre_dossier():
     assert Filtres(dossier="3:").dossier_cible() == (3, "")
     assert Filtres(dossier="n'importe quoi").dossier_cible() is None
     assert "dossier=3%3AInfra" in Filtres(q="vpn", dossier="3:Infra").lien()
+
+
+def test_arbre_des_resultats_fusionne_les_chaines_de_dossiers():
+    from ged.arborescence import construire_arbre_resultats
+
+    docs = [
+        {"source_id": 1, "source": "GED Infra", "chemin_relatif": r"Infra\Reseau\VPN\vpn.docx", "nom": "vpn.docx"},
+        {"source_id": 1, "source": "GED Infra", "chemin_relatif": r"Infra\Reseau\VPN\client.pdf", "nom": "client.pdf"},
+        {"source_id": 1, "source": "GED Infra", "chemin_relatif": r"Infra\Imprimantes\spouleur.docx", "nom": "spouleur.docx"},
+        {"source_id": 1, "source": "GED Infra", "chemin_relatif": "lisez-moi.txt", "nom": "lisez-moi.txt"},
+    ]
+    [source] = construire_arbre_resultats(docs)
+    assert source["nb_documents"] == 4
+    assert [f["nom"] for f in source["fichiers"]] == ["lisez-moi.txt"]
+    [infra] = source["enfants"]
+    assert infra.nom == "Infra" and infra.nb_documents == 3
+    # "Reseau" ne contient que "VPN" : les deux sont fusionnés
+    assert [e.nom for e in infra.enfants] == ["Imprimantes", "Reseau › VPN"]
+    assert infra.enfants[1].chemin == r"Infra\Reseau\VPN"
+    assert [f["nom"] for f in infra.enfants[1].fichiers] == ["client.pdf", "vpn.docx"]

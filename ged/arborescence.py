@@ -30,6 +30,8 @@ class Dossier:
     nb_documents: int = 0
     derniere_modification: datetime | None = None
     enfants: dict[str, "Dossier"] = field(default_factory=dict)
+    # Documents situés directement dans ce dossier (vue arborescence des résultats)
+    fichiers: list[dict] = field(default_factory=list)
 
     def sous_dossiers(self) -> list["Dossier"]:
         return sorted(self.enfants.values(), key=lambda d: d.nom.lower())
@@ -56,6 +58,63 @@ def construire_arbre(documents: list[tuple[str, datetime]]) -> Dossier:
             noeud.nb_documents += 1
             noeud.derniere_modification = max(filter(None, [noeud.derniere_modification, modifie_le]), default=None)
     return racine
+
+
+@dataclass
+class Branche:
+    """Dossier tel qu'affiché dans l'arbre des résultats."""
+    # Les dossiers qui ne contiennent qu'un sous-dossier sont fusionnés : "Documents › iCloud › Famille"
+    nom: str
+    # Chemin du dossier le plus profond de la chaîne fusionnée
+    chemin: str
+    nb_documents: int
+    fichiers: list[dict]
+    enfants: list["Branche"]
+
+
+def construire_arbre_resultats(documents: list[dict]) -> list[dict]:
+    """Arbre des seuls documents trouvés, par source.
+
+    `documents` : lignes avec source_id, source, chemin_relatif, nom (cf. rechercher(tous=True)).
+    """
+    racines: dict[int, tuple[str, Dossier]] = {}
+    for doc in documents:
+        nom_source, racine = racines.setdefault(doc["source_id"], (doc["source"], Dossier(nom="", chemin="")))
+        noeud = racine
+        noeud.nb_documents += 1
+        parent = dossier_parent(doc["chemin_relatif"])
+        parties = parent.split(SEPARATEUR) if parent else []
+        for i, partie in enumerate(parties):
+            if partie not in noeud.enfants:
+                noeud.enfants[partie] = Dossier(nom=partie, chemin=SEPARATEUR.join(parties[: i + 1]))
+            noeud = noeud.enfants[partie]
+            noeud.nb_documents += 1
+        noeud.fichiers.append(doc)
+
+    return [
+        {
+            "source_id": source_id,
+            "source": nom_source,
+            "nb_documents": racine.nb_documents,
+            "fichiers": sorted(racine.fichiers, key=lambda f: f["nom"].lower()),
+            "enfants": [_compacter(e) for e in racine.sous_dossiers()],
+        }
+        for source_id, (nom_source, racine) in sorted(racines.items(), key=lambda r: r[1][0].lower())
+    ]
+
+
+def _compacter(noeud: Dossier) -> Branche:
+    noms = [noeud.nom]
+    while not noeud.fichiers and len(noeud.enfants) == 1:
+        noeud = next(iter(noeud.enfants.values()))
+        noms.append(noeud.nom)
+    return Branche(
+        nom=" › ".join(noms),
+        chemin=noeud.chemin,
+        nb_documents=noeud.nb_documents,
+        fichiers=sorted(noeud.fichiers, key=lambda f: f["nom"].lower()),
+        enfants=[_compacter(e) for e in noeud.sous_dossiers()],
+    )
 
 
 def trouver(racine: Dossier, chemin: str) -> Dossier | None:

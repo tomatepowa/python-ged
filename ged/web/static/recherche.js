@@ -168,6 +168,15 @@
   champ.addEventListener('focus', () => { if (champ.value.trim()) suggerer(); });
   champ.addEventListener('blur', fermerSuggestions);
   champ.addEventListener('keydown', (e) => {
+    // Échap ferme les suggestions mais ne vide jamais le champ (comportement natif de
+    // type="search", même si la liste n'est pas encore affichée) : la croix sert à effacer
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      // Annule aussi une demande de suggestions en cours, qui rouvrirait la liste à son arrivée
+      if (requeteSuggestions) requeteSuggestions.abort();
+      fermerSuggestions();
+      return;
+    }
     if (liste.hidden || !elements.length) return;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -178,8 +187,6 @@
     } else if (e.key === 'Enter' && actif >= 0) {
       e.preventDefault();
       choisir(elements[actif]);
-    } else if (e.key === 'Escape') {
-      fermerSuggestions();
     }
   });
 

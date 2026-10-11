@@ -347,3 +347,56 @@ a.badge.tag:hover { outline: 1px solid var(--tag-texte); }
   .explorateur, .colonnes { grid-template-columns: 1fr; }
   .arbre { position: static; max-height: 40vh; }
 }
+
+/* Bascule Liste / Arborescence */
+.vues { display: inline-flex; margin-bottom: .75rem; border: 1px solid var(--bordure); border-radius: 8px; overflow: hidden; }
+.vues label { padding: .35rem .9rem; cursor: pointer; font-size: .9rem; color: var(--texte-doux); }
+.vues input { position: absolute; opacity: 0; pointer-events: none; }
+.vues label:has(input:checked) { background: var(--accent); color: var(--accent-texte); font-weight: 600; }
+.vues label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* Arborescence des résultats */
+.arbre-resultats {
+  padding: .5rem .75rem;
+  background: var(--surface);
+  border: 1px solid var(--bordure);
+  border-radius: 10px;
+}
+.arbre-dossier > summary {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  min-width: 0;
+  padding: .2rem .35rem;
+  border-radius: 4px;
+  cursor: pointer;
+  list-style: none;
+}
+.arbre-dossier > summary::-webkit-details-marker { display: none; }
+.arbre-dossier > summary::before {
+  content: "▸";
+  flex: 0 0 .9rem;
+  color: var(--texte-doux);
+  font-size: .8rem;
+  transition: transform .1s;
+}
+.arbre-dossier[open] > summary::before { transform: rotate(90deg); }
+.arbre-dossier > summary:hover { background: var(--badge); }
+.arbre-dossier .nom { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.arbre-dossier.source > summary .nom { font-size: 1.05rem; }
+.arbre-dossier .compte {
+  flex-shrink: 0;
+  padding: 0 .5rem;
+  border-radius: 999px;
+  background: var(--tag);
+  color: var(--tag-texte);
+  font-size: .78rem;
+  font-variant-numeric: tabular-nums;
+}
+.arbre-dossier .ouvrir { flex-shrink: 0; padding: 0 .3rem; text-decoration: none; color: var(--texte-doux); }
+.arbre-dossier .ouvrir:hover { color: var(--accent); }
+.arbre-contenu { margin-left: .5rem; padding-left: .55rem; border-left: 1px dotted var(--bordure); }
+.arbre-fichier { padding: .12rem 0 .12rem 1.3rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .92rem; }
+.arbre-fichier a { text-decoration: none; }
+.arbre-fichier a:hover { text-decoration: underline; }
+.arbre-fichier.plus a { color: var(--texte-doux); font-style: italic; }

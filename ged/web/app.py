@@ -15,8 +15,8 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from ged import config as configuration
-from ged.arborescence import dossier_parent, fichiers, fil_ariane, sources, trouver
-from ged.recherche import PAR_PAGE, Filtres, facettes, rechercher, statistiques, suggerer
+from ged.arborescence import construire_arbre_resultats, dossier_parent, fichiers, fil_ariane, sources, trouver
+from ged.recherche import DOCUMENTS_ARBRE_MAX, PAR_PAGE, Filtres, facettes, rechercher, statistiques, suggerer
 
 ICI = Path(__file__).parent
 templates = Jinja2Templates(directory=ICI / "templates")
@@ -63,11 +63,21 @@ def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
     app.mount("/static", StaticFiles(directory=ICI / "static"), name="static")
 
     def contexte_resultats(filtres: Filtres, conn) -> dict:
+        if filtres.vue == "arbre":
+            resultats = rechercher(conn, filtres, tous=True)
+            return {
+                "filtres": filtres,
+                "resultats": resultats,
+                "arbre": construire_arbre_resultats(resultats.documents),
+                "tronque": resultats.total >= DOCUMENTS_ARBRE_MAX,
+                "gabarit": "_arbre.html",
+            }
         resultats = rechercher(conn, filtres)
         return {
             "filtres": filtres,
             "resultats": resultats,
             "nb_pages": max(1, -(-resultats.total // PAR_PAGE)),
+            "gabarit": "_resultats.html",
         }
 
     @app.get("/", response_class=HTMLResponse)
@@ -78,9 +88,10 @@ def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
         famille: str = "",
         tag: Annotated[list[int], Query()] = [],
         dossier: str = "",
+        vue: str = "",
         page: int = 1,
     ):
-        filtres = Filtres(q=q, pole=pole, famille=famille, tags=tag, dossier=dossier, page=max(page, 1))
+        filtres = Filtres(q=q, pole=pole, famille=famille, tags=tag, dossier=dossier, vue=vue if vue == "arbre" else "", page=max(page, 1))
         with pool.connection() as conn:
             contexte = contexte_resultats(filtres, conn)
             choix = facettes(conn)
@@ -102,13 +113,14 @@ def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
         famille: str = "",
         tag: Annotated[list[int], Query()] = [],
         dossier: str = "",
+        vue: str = "",
         page: int = 1,
     ):
         """Fragment HTML de la liste de résultats, pour la recherche pendant la frappe."""
-        filtres = Filtres(q=q, pole=pole, famille=famille, tags=tag, dossier=dossier, page=max(page, 1))
+        filtres = Filtres(q=q, pole=pole, famille=famille, tags=tag, dossier=dossier, vue=vue if vue == "arbre" else "", page=max(page, 1))
         with pool.connection() as conn:
             contexte = contexte_resultats(filtres, conn)
-        return templates.TemplateResponse(request, "_resultats.html", contexte)
+        return templates.TemplateResponse(request, contexte["gabarit"], contexte)
 
     @app.get("/suggestions")
     def suggestions(q: str = ""):

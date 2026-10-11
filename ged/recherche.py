@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from functools import partial
 from itertools import islice, product
 from urllib.parse import urlencode
 
@@ -14,6 +15,8 @@ from ged.extraits import construire_motif, extraire
 from ged.texte import normaliser
 
 PAR_PAGE = 20
+# Au-delà, la vue arborescence est tronquée (il faut affiner la recherche)
+DOCUMENTS_ARBRE_MAX = 5000
 # Guillemets, exclusion (-mot) ou OR : syntaxe "moteur de recherche", traitée par websearch_to_tsquery
 _OPERATEURS = re.compile(r'"|(?:^|\s)-\w|\sOR\s')
 
@@ -26,11 +29,15 @@ class Filtres:
     tags: list[int] = field(default_factory=list)
     # Limite la recherche à un dossier et ses sous-dossiers : "<id source>:<chemin relatif>"
     dossier: str = ""
+    # Affichage des résultats : "" (liste) ou "arbre"
+    vue: str = ""
     page: int = 1
 
     def lien(self, page: int | None = None) -> str:
         """Query string de cette recherche (pour la pagination et l'URL partageable)."""
-        parametres = [("q", self.q), ("pole", self.pole), ("famille", self.famille), ("dossier", self.dossier)]
+        parametres = [
+            ("q", self.q), ("pole", self.pole), ("famille", self.famille), ("dossier", self.dossier), ("vue", self.vue),
+        ]
         parametres += [("tag", t) for t in self.tags]
         parametres.append(("page", page or self.page))
         return urlencode([(k, v) for k, v in parametres if v not in ("", None)])
@@ -133,14 +140,17 @@ def distance_max(mot: str) -> int:
     return 1 if len(mot) <= 4 else 2 if len(mot) <= 8 else 3
 
 
-def rechercher(conn: psycopg.Connection, filtres: Filtres) -> Resultats:
+def rechercher(conn: psycopg.Connection, filtres: Filtres, tous: bool = False) -> Resultats:
+    """Recherche paginée (tous=False) ou liste complète des documents trouvés, sans extraits,
+    pour la vue arborescence (tous=True)."""
+    executer = partial(_executer, conn, filtres, tous=tous)
     q = filtres.q.strip()
     if not q:
-        return _executer(conn, filtres, "recents")
+        return executer("recents")
 
     mots = decouper(q)
     if _OPERATEURS.search(q):
-        resultats = _executer(conn, filtres, "exact", parametre=q, surligner=mots)
+        resultats = executer("exact", parametre=q, surligner=mots)
         if resultats.total:
             return resultats
     else:
@@ -148,20 +158,20 @@ def rechercher(conn: psycopg.Connection, filtres: Filtres) -> Resultats:
         # parasites sur les mots mal orthographiés masqueraient les bons documents
         correction = corriger(conn, mots)
         if correction:
-            resultats = _executer(conn, filtres, "corrige", parametre=requete_saisie(correction), surligner=correction)
+            resultats = executer("corrige", parametre=requete_saisie(correction), surligner=correction)
             if resultats.total:
                 resultats.correction = " ".join(correction)
                 return resultats
         if mots:
-            resultats = _executer(conn, filtres, "saisie", parametre=requete_saisie(mots), surligner=mots)
+            resultats = executer("saisie", parametre=requete_saisie(mots), surligner=mots)
             if resultats.total:
                 return resultats
-    return _executer(conn, filtres, "approchant", parametre=q, surligner=mots)
+    return executer("approchant", parametre=q, surligner=mots)
 
 
 def _executer(
     conn: psycopg.Connection, filtres: Filtres, mode: str, parametre: str | None = None,
-    surligner: list[str] | None = None,
+    surligner: list[str] | None = None, tous: bool = False,
 ) -> Resultats:
     parametres: dict = {
         "p": parametre,
@@ -210,6 +220,20 @@ def _executer(
         conditions.append("d.source_id = %(dossier_source)s AND starts_with(d.chemin_relatif, %(dossier_prefixe)s)")
         parametres["dossier_source"] = cible[0]
         parametres["dossier_prefixe"] = cible[1] + "\\" if cible[1] else ""
+
+    if tous:
+        # Vue arborescence : tous les documents trouvés, juste de quoi placer chacun dans l'arbre
+        lignes = conn.execute(
+            f"""
+            SELECT d.id, d.source_id, s.nom AS source, d.nom, d.chemin_relatif, d.famille, d.modifie_le
+            FROM document d JOIN source s ON s.id = d.source_id
+            WHERE {' AND '.join(conditions)}
+            ORDER BY s.nom, d.chemin_relatif
+            LIMIT %(max_arbre)s
+            """,
+            {**parametres, "max_arbre": DOCUMENTS_ARBRE_MAX},
+        ).fetchall()
+        return Resultats(lignes, len(lignes), mode)
 
     # En deux temps : 1) classer tous les documents trouvés (rapide, index GIN), 2) ne lire le
     # texte et les tags que pour la page affichée. L'extrait surligné est fabriqué en Python

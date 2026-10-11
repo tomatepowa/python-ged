@@ -33,6 +33,7 @@ Les fichiers ne sont **ni déplacés, ni modifiés** : l'arborescence actuelle r
 - **Classement** : un document dont le nom ou le titre contient les mots cherchés passe devant ceux qui les citent seulement dans le texte.
 - **Extraits surlignés** : chaque résultat montre le passage où apparaissent les mots cherchés.
 - **Filtres** : pôle (Métier, Infra, BI, ITO…), type de fichier, tags (un clic sur un tag affiche tous les documents qui le portent), dossier.
+- **Résultats en arborescence** : bascule « Liste / Arborescence » sur l'accueil ; l'arbre ne montre que les dossiers contenant des documents trouvés (recherche + tags + filtres), avec leur nombre, et se met à jour en temps réel. Les dossiers à un seul sous-dossier sont fusionnés (« Documents › Infra › Réseau ») pour rester lisibles.
 - **Explorateur** : arborescence des partages et contenu des dossiers, comme l'explorateur Windows (tri par nom, date, type, taille), avec recherche limitée à un dossier et ses sous-dossiers.
 - **Personnes** : auteur et dernier modificateur (propriétés Office / PDF), propriétaire du fichier.
 - **Droits d'accès** : utilisateurs et groupes autorisés (ou refusés) sur chaque fichier, lus dans les droits NTFS et traduits comme dans l'onglet Sécurité (Lecture, Modification, Contrôle total…), avec leur origine (héritée ou propre au fichier). Relus à chaque indexation.

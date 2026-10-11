@@ -7,7 +7,7 @@
     <div class="champ">
       <input type="search" name="q" value="{{ filtres.q }}" autocomplete="off" autofocus spellcheck="false"
              role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggestions"
-             placeholder="Rechercher : imprimante, identitovigilance, &quot;message d'erreur&quot;…">
+             placeholder="Rechercher{% if exemples_recherche %} : {{ exemples_recherche }}{% endif %}…">
       <div id="suggestions" class="suggestions" role="listbox" hidden></div>
     </div>
     <button type="submit">Rechercher</button>

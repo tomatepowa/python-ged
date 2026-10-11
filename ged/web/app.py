@@ -58,6 +58,7 @@ def libelle_du_dossier(conn, filtres: Filtres) -> str | None:
 
 def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
     cfg = cfg or configuration.charger()
+    templates.env.globals["exemples_recherche"] = cfg.exemples_recherche
     pool = ConnectionPool(cfg.url_base, kwargs={"row_factory": dict_row}, min_size=1, max_size=10, open=False)
 
     @asynccontextmanager

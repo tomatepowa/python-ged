@@ -71,6 +71,7 @@ def test_config_exemple_valide():
     assert [s.pole for s in cfg.sources] == ["Métier", "Infra"]
     assert str(cfg.sources[0].chemin) == r"\\nas\metier\ged"
     assert cfg.taxonomie == racine / "taxonomie.toml"
+    assert cfg.exemples_recherche == "imprimante, identitovigilance, \"message d'erreur\""
 
 
 def test_parcourir_signale_les_dossiers_inaccessibles(tmp_path):

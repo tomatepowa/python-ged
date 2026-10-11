@@ -290,6 +290,10 @@ if ($initialisation) {
         "tessdata = $(ConvertTo-TomlLitteral $dossierTessdata)",
         'langue = "fra"',
         'dpi = 300',
+        '',
+        '[interface]',
+        '# Exemples affichés dans la barre de recherche vide',
+        'exemples_recherche = "imprimante, identitovigilance, \"message d''erreur\""',
         ''
     )
     if ($soffice) {

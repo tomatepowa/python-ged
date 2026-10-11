@@ -27,6 +27,10 @@ dpi = 300
 # LibreOffice, pour lire les anciens formats (.doc, .xls, .ppt, .rtf). Optionnel.
 soffice = 'C:\Program Files\LibreOffice\program\soffice.exe'
 
+[interface]
+# Exemples affichés dans la barre de recherche vide (« Rechercher : ...… »). Vide : « Rechercher… »
+exemples_recherche = "imprimante, identitovigilance, \"message d'erreur\""
+
 # Une section [[sources]] par dossier à indexer. Le pôle sert de filtre dans la recherche.
 [[sources]]
 nom = "GED Métier"

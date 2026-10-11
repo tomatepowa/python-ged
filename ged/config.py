@@ -29,6 +29,8 @@ class Config:
     dpi_ocr: int = 300
     soffice: str | None = None
     taxonomie: Path = Path("taxonomie.toml")
+    # Exemples affichés dans la barre de recherche vide : « Rechercher : <exemples>… »
+    exemples_recherche: str = ""
 
 
 def charger(chemin: str | Path | None = None) -> Config:
@@ -47,6 +49,7 @@ def charger(chemin: str | Path | None = None) -> Config:
     indexation = donnees.get("indexation", {})
     ocr = donnees.get("ocr", {})
     conversion = donnees.get("conversion", {})
+    interface = donnees.get("interface", {})
 
     if "url" not in base:
         raise SystemExit(f"{fichier} : la clé [base] url est obligatoire.")
@@ -69,4 +72,5 @@ def charger(chemin: str | Path | None = None) -> Config:
         dpi_ocr=int(ocr.get("dpi", 300)),
         soffice=conversion.get("soffice"),
         taxonomie=fichier.parent / donnees.get("taxonomie", "taxonomie.toml"),
+        exemples_recherche=str(interface.get("exemples_recherche", "")).strip(),
     )

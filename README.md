@@ -149,6 +149,9 @@ url = "postgresql://ged:mot-de-passe@localhost:5432/ged"
 active = true
 tessdata = 'C:\GED\tessdata'     # dossier contenant fra.traineddata
 
+[interface]
+exemples_recherche = "imprimante, identitovigilance, \"message d'erreur\""   # texte de la barre de recherche vide
+
 [[sources]]
 nom = "GED Infra"
 chemin = '\\nas\infra\ged'

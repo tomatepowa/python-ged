@@ -30,6 +30,11 @@ def main(argv: list[str] | None = None) -> None:
 
     commandes.add_parser("serveur", help="lance l'interface web de recherche")
 
+    p_reinit = commandes.add_parser(
+        "reinitialiser", help="vide l'index pour repartir de zéro (les fichiers indexés ne sont pas touchés)"
+    )
+    p_reinit.add_argument("--oui", action="store_true", help="sans demander de confirmation")
+
     args = parser.parse_args(argv)
     logging.basicConfig(
         level=logging.DEBUG if args.verbeux else logging.INFO,
@@ -69,6 +74,21 @@ def main(argv: list[str] | None = None) -> None:
         with connecter(cfg.url_base) as conn:
             bilan = Indexeur(cfg, conn).recalculer()
         _afficher_bilan("Recalcul terminé", bilan)
+
+    elif args.commande == "reinitialiser":
+        from ged.db import connecter, vider_index
+
+        with connecter(cfg.url_base) as conn:
+            nb = conn.execute(
+                "SELECT (SELECT count(*) FROM document WHERE supprime_le IS NULL) AS documents, (SELECT count(*) FROM source) AS sources"
+            ).fetchone()
+            print(f"L'index contient {nb['documents']} documents ({nb['sources']} sources).")
+            print("Il sera entièrement vidé ; les fichiers des partages ne sont pas touchés.")
+            if not args.oui and input("Tapez OUI pour confirmer : ").strip() != "OUI":
+                sys.exit("Abandon : rien n'a été modifié.")
+            vider_index(conn)
+            conn.commit()
+        print("Index vidé. Relancez l'indexation (ged indexer) pour le reconstruire.")
 
     elif args.commande == "serveur":
         import uvicorn

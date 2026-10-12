@@ -22,3 +22,12 @@ def initialiser(url: str) -> None:
     schema = files("ged").joinpath("schema.sql").read_text(encoding="utf-8")
     with connecter(url) as conn:
         conn.execute(schema)
+
+
+# Tables vidées par « ged reinitialiser » : tout ce que l'indexation remplit
+TABLES_INDEX = ("document_tag", "document", "tag", "vocabulaire", "source")
+
+
+def vider_index(conn: psycopg.Connection) -> None:
+    """Vide l'index (documents, tags, vocabulaire, sources) en gardant le schéma. Sans commit."""
+    conn.execute(f"TRUNCATE {', '.join(TABLES_INDEX)} RESTART IDENTITY CASCADE")

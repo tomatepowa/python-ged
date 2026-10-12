@@ -10,6 +10,7 @@
     indexer  : démarre PostgreSQL si besoin, puis indexe les partages de config.toml
     ocr      : démarre PostgreSQL si besoin, puis passe en OCR les scans en attente
     recalculer : réapplique tags et codes (après modification de taxonomie.toml)
+    reinitialiser : vide l'index pour repartir de zéro (confirmation demandée), puis relancer indexer
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File .\outils\installation\GED-Poste.ps1 demarrer
@@ -17,7 +18,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('demarrer', 'arreter', 'etat', 'indexer', 'ocr', 'recalculer')]
+    [ValidateSet('demarrer', 'arreter', 'etat', 'indexer', 'ocr', 'recalculer', 'reinitialiser')]
     [string]$Action = 'etat',
 
     [string]$Dossier = (Join-Path $env:LOCALAPPDATA 'ged')

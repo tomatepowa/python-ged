@@ -175,6 +175,7 @@ PostgreSQL ne tourne pas en service Windows (il faudrait des droits admin). Au q
 .\outils\installation\GED-Poste.ps1 demarrer    # PostgreSQL si besoin + interface sur http://127.0.0.1:8000
 .\outils\installation\GED-Poste.ps1 indexer     # indexe les partages
 .\outils\installation\GED-Poste.ps1 ocr         # passe les scans en OCR
+.\outils\installation\GED-Poste.ps1 reinitialiser  # vide l'index pour repartir de zéro (confirmation demandée)
 .\outils\installation\GED-Poste.ps1 arreter     # arrête PostgreSQL
 ```
 
@@ -220,6 +221,7 @@ uv run ged recalculer          # réapplique tags et codes sans relire les fichi
 uv run ged ocr                 # passe en OCR les scans en attente
 uv run ged ocr --limite 50     # ... par lots
 uv run ged serveur             # interface web sur http://127.0.0.1:8000
+uv run ged reinitialiser       # vide l'index (confirmation demandée), puis relancer ged indexer
 ```
 
 Dans l'interface :

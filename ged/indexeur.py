@@ -36,6 +36,11 @@ NOMS_BRUIT = {"thumbs.db", "desktop.ini"}
 EXTENSIONS_BRUIT = {".tmp", ".lnk", ".url"}
 # Jamais indexés : coffres de mots de passe, clés privées, certificats
 EXTENSIONS_SENSIBLES = {".kdbx", ".kdb", ".kbdx", ".pfx", ".p12", ".key", ".pem", ".ppk"}
+# Binaires d'applications (programmes, bibliothèques, code compilé) : aucun intérêt documentaire
+EXTENSIONS_TECHNIQUES = {
+    ".exe", ".dll", ".sys", ".ocx", ".drv", ".cpl", ".msi", ".msp", ".cab", ".jar", ".war", ".class",
+    ".so", ".pyc", ".pyo", ".pdb", ".obj", ".o", ".lib", ".a",
+}
 
 COMMIT_TOUS_LES = 50
 MESSAGE_SANS_TEXTE = "OCR : aucun texte lisible (photo, dessin, schéma ?)"
@@ -47,9 +52,20 @@ def est_ignore(chemin: Path, exclusions: list[str]) -> bool:
     if nom.startswith(("~$", ".")) or nom in NOMS_BRUIT:
         return True
     ext = chemin.suffix.lower()
-    if ext in EXTENSIONS_BRUIT or ext in EXTENSIONS_SENSIBLES:
+    if ext in EXTENSIONS_BRUIT or ext in EXTENSIONS_SENSIBLES or ext in EXTENSIONS_TECHNIQUES:
         return True
     return any(fnmatch.fnmatch(str(chemin), motif) for motif in exclusions)
+
+
+def dossier_exclu(dossier: Path, exclusions: list[str]) -> bool:
+    r"""Dossier visé par un motif d'exclusion : il n'est pas parcouru du tout.
+
+    Accepte '*\Applis\LogicielX' comme '*\Applis\LogicielX\*' (motif « tout ce qu'il contient »).
+    """
+    if dossier.name.lower() in DOSSIERS_SYSTEME:
+        return True
+    chemins = (str(dossier), str(dossier) + os.sep)
+    return any(fnmatch.fnmatch(c, motif) for motif in exclusions for c in chemins)
 
 
 def parcourir(racine: Path, exclusions: list[str], inaccessibles: list[Path] | None = None) -> Iterator[Path]:
@@ -64,7 +80,7 @@ def parcourir(racine: Path, exclusions: list[str], inaccessibles: list[Path] | N
             inaccessibles.append(Path(erreur.filename))
 
     for dossier, sous_dossiers, fichiers in os.walk(racine, onerror=signaler):
-        sous_dossiers[:] = sorted(d for d in sous_dossiers if d.lower() not in DOSSIERS_SYSTEME)
+        sous_dossiers[:] = sorted(d for d in sous_dossiers if not dossier_exclu(Path(dossier, d), exclusions))
         for nom in sorted(fichiers):
             chemin = Path(dossier, nom)
             if not est_ignore(chemin, exclusions):

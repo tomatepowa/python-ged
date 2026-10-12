@@ -11,9 +11,12 @@ port = 8000
 
 [indexation]
 taille_max_mo = 100     # au-delà, le fichier est référencé mais son contenu n'est pas lu
-# Motifs supplémentaires à ignorer (syntaxe fnmatch, sur le chemin complet)
+# Motifs supplémentaires à ignorer (syntaxe fnmatch, sur le chemin complet, majuscules indifférentes).
+# Un dossier visé n'est pas parcouru du tout : idéal pour les dossiers d'applications.
+# Les programmes et bibliothèques (.exe, .dll, .jar, .msi...) sont déjà ignorés partout.
 exclure = [
-    # '*\Archives\*',
+    # '*\Archives\*',           # tous les dossiers « Archives », où qu'ils soient
+    # '\\nas\metier\ged\Applis\LogicielX',   # un dossier précis
 ]
 
 [ocr]

@@ -301,21 +301,6 @@ a.badge.tag:hover { outline: 1px solid var(--tag-texte); }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Bouton « Chercher ici » : visible au survol (ou au clavier), toujours sur écran tactile */
-.chercher-ici {
-  flex-shrink: 0;
-  padding: .05rem .5rem;
-  border-radius: 999px;
-  background: var(--badge);
-  color: var(--texte);
-  font-size: .78rem;
-  font-weight: 500;
-  opacity: 0;
-  transition: opacity .1s;
-}
-.arbre-dossier > summary:hover > .chercher-ici, .chercher-ici:focus-visible { opacity: 1; }
-.chercher-ici:hover { background: var(--accent); color: var(--accent-texte); }
-@media (hover: none) { .chercher-ici { opacity: 1; } }
 .arbre-dossier.source > summary .nom { font-size: 1.05rem; }
 .arbre-dossier .compte {
   flex-shrink: 0;

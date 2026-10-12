@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from ged.config import charger
@@ -32,6 +33,23 @@ def test_parcourir_ignore_bruit_systeme_et_sensible(tmp_path):
     )
     trouves = {p.relative_to(tmp_path).as_posix() for p in parcourir(tmp_path, exclusions=["*\\Archives\\*", "*/Archives/*"])}
     assert trouves == {"Infra/note.docx", "Metier/procedure.pdf"}
+
+
+def test_parcourir_saute_dossiers_exclus_et_binaires(tmp_path, monkeypatch):
+    creer(
+        tmp_path,
+        "Applis/LogicielX/bin/moteur.dll",
+        "Applis/LogicielX/doc/manuel.pdf",
+        "Applis/LogicielY/installeur.exe",
+        "Applis/LogicielY/lisezmoi.txt",
+    )
+    visites = []
+    original = os.walk
+    monkeypatch.setattr(os, "walk", lambda racine, **kw: ((visites.append(d) or (d, s, f)) for d, s, f in original(racine, **kw)))
+    motif = str(tmp_path / "applis" / "logicielx")
+    trouves = {p.relative_to(tmp_path).as_posix() for p in parcourir(tmp_path, exclusions=[motif])}
+    assert trouves == {"Applis/LogicielY/lisezmoi.txt"}
+    assert not any("LogicielX" in d for d in visites)
 
 
 def test_requete_saisie_dernier_mot_en_prefixe():

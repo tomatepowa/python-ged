@@ -1,36 +1,49 @@
 {# Vue arborescence des résultats : seuls les dossiers contenant des documents trouvés.
-   Par défaut « dossiers seulement » : tous les dossiers dépliés, fichiers masqués (un clic sur
-   un dossier affiche ses fichiers). En mode fichiers (« Tout déplier » une fois choisi, mémorisé
-   par le navigateur) : peu de résultats, tout est déplié ; beaucoup, seuls les deux premiers
-   niveaux le sont (data-ouvert).
-   Clic sur un dossier : il se déplie / se replie (navigation). Le bouton 🔍 qui apparaît au
-   survol limite la recherche à ce dossier ; dans une chaîne fusionnée « a › b › c », un clic
-   sur a ou b limite la recherche à ce dossier. #}
+   Affichage selon le contexte :
+   - accueil (ni mot-clé, ni filtre de dossier) : « dossiers seulement », tous dépliés, fichiers
+     masqués (un clic à côté du nom d'un dossier affiche ses fichiers) ;
+   - dans un dossier, sans mot-clé : comme l'explorateur, ses fichiers sont affichés et ses
+     sous-dossiers repliés ;
+   - recherche (mot-clé, famille, tags) : tout déplié avec les fichiers (au-delà de 150
+     résultats, seuls les deux premiers niveaux).
+   Clic sur le nom d'un dossier : on entre dedans (la recherche y est limitée) ; clic ailleurs
+   sur la ligne : il se déplie / se replie. #}
+{% set cible = filtres.dossier_cible() %}
+{% if filtres.q or filtres.famille or filtres.tags %}{% set mode = "tout" %}
+{% elif cible %}{% set mode = "explorateur" %}
+{% else %}{% set mode = "dossiers" %}{% endif %}
+{% set chemin_cible = cible[1] if cible else "" %}
 {% set tout_deplier = resultats.total <= 150 %}
 {% set icones = {"PDF": "📕", "Word": "📘", "Excel": "📗", "PowerPoint": "📙", "Image": "🖼️", "Mail": "✉️", "Video": "🎞️", "Archive": "🗜️"} %}
 
 {% macro entete_dossier(source_id, chemin, libelle, icone, nb, ancetres=[]) %}
-  {# Chaîne fusionnée « a › b › c » : a et b sont cliquables pour y limiter la recherche #}
+  {# Chaîne fusionnée « a › b › c » : chaque nom est cliquable pour entrer dans ce dossier #}
+  {% set dernier = libelle.split(" › ")[-1] if ancetres else libelle %}
   <span class="nom" title="{{ libelle }}">{{ icone }}
-    {%- for nom, chemin_ancetre in ancetres %} <a class="segment" href="{{ lien_dossier(source_id, chemin_ancetre) }}" data-dossier="{{ source_id }}:{{ chemin_ancetre }}" title="Chercher seulement dans « {{ nom }} »">{{ nom }}</a> ›{% endfor %}
-    {{ libelle.split(" › ")[-1] if ancetres else libelle }}</span>
-  <button type="button" class="chercher-ici" data-dossier="{{ source_id }}:{{ chemin }}"
-          title="Chercher seulement dans « {{ libelle }} »">🔍 Chercher ici</button>
+    {%- for nom, chemin_ancetre in ancetres %} <a class="segment" href="{{ lien_dossier(source_id, chemin_ancetre) }}" data-dossier="{{ source_id }}:{{ chemin_ancetre }}" title="Ouvrir « {{ nom }} »">{{ nom }}</a> ›{% endfor %}
+    <a class="segment" href="{{ lien_dossier(source_id, chemin) }}" data-dossier="{{ source_id }}:{{ chemin }}" title="Ouvrir « {{ dernier }} »">{{ dernier }}</a></span>
   <span class="compte">{{ nb }}</span>
 {% endmacro %}
 
 {% macro liste_fichiers(fichiers, source_id, chemin) %}
-  {% for f in fichiers[:30] %}
+  {# Le dossier ouvert en mode explorateur montre tous ses fichiers, les autres les 30 premiers #}
+  {% set limite = 1000 if mode == "explorateur" and chemin == chemin_cible else 30 %}
+  {% for f in fichiers[:limite] %}
   <div class="arbre-fichier"><a href="/document/{{ f.id }}" title="{{ f.nom }}">{{ icones.get(f.famille, "📄") }} {{ f.nom }}</a></div>
   {% endfor %}
-  {% if fichiers | length > 30 %}
-  <div class="arbre-fichier plus"><a href="{{ lien_dossier(source_id, chemin) }}" data-dossier="{{ source_id }}:{{ chemin }}">… et {{ fichiers | length - 30 }} autres dans ce dossier</a></div>
+  {% if fichiers | length > limite %}
+  <div class="arbre-fichier plus"><a href="{{ lien_dossier(source_id, chemin) }}" data-dossier="{{ source_id }}:{{ chemin }}">… et {{ fichiers | length - limite }} autres dans ce dossier</a></div>
   {% endif %}
 {% endmacro %}
 
 {% macro branches(liste, source_id, profondeur) %}
   {% for b in liste %}
-  <details class="arbre-dossier" open{% if tout_deplier or profondeur < 2 %} data-ouvert{% endif %}>
+  {# Explorateur : seul le chemin jusqu'au dossier ouvert est déplié (il peut être au milieu d'une chaîne fusionnée) #}
+  {% set sur_le_chemin = chemin_cible == b.chemin or chemin_cible.startswith(b.chemin ~ "\\")
+                         or chemin_cible in b.ancetres | map(attribute=1) %}
+  {% set ouvert = (mode == "dossiers") or (mode == "tout" and (tout_deplier or profondeur < 2))
+                  or (mode == "explorateur" and sur_le_chemin) %}
+  <details class="arbre-dossier"{% if ouvert %} open{% endif %}>
     <summary>
       {{ entete_dossier(source_id, b.chemin, b.nom, "📁", b.nb_documents, b.ancetres) }}
     </summary>
@@ -50,18 +63,18 @@
     {{ resultats.total }} document{{ "s" if resultats.total > 1 }} — rangés dans leurs dossiers
     {% if resultats.mode == "corrige" %}<span class="note">pour « <strong>{{ resultats.correction }}</strong> » (orthographe corrigée)</span>{% endif %}
     {% if resultats.mode == "approchant" %}<span class="note">(noms de fichiers approchants)</span>{% endif %}
-    <span class="note">— 🔍 au survol d'un dossier pour y limiter la recherche</span>
+    <span class="note">— cliquez sur le nom d'un dossier pour l'ouvrir</span>
   {% endif %}
 </p>
 {% if tronque %}<p class="avertissement">Affichage limité aux {{ resultats.total }} premiers documents : affinez la recherche ou les filtres.</p>{% endif %}
 
 {% if arbre %}
 <div class="arbre-actions">
-  <button type="button" class="pastille" data-deplier="dossiers" title="Tous les dossiers dépliés, sans les fichiers : cliquez sur un dossier pour voir ses fichiers">📁 Dossiers seulement</button>
-  <button type="button" class="pastille" data-deplier="tout">⊞ Tout déplier</button>
+  <button type="button" class="pastille{% if mode == "dossiers" %} actif{% endif %}" data-deplier="dossiers" title="Tous les dossiers dépliés, sans les fichiers : cliquez à côté du nom d'un dossier pour voir ses fichiers">📁 Dossiers seulement</button>
+  <button type="button" class="pastille{% if mode == "tout" %} actif{% endif %}" data-deplier="tout">⊞ Tout déplier</button>
   <button type="button" class="pastille" data-deplier="rien">⊟ Tout replier</button>
 </div>
-<div class="arbre-resultats dossiers-seuls">
+<div class="arbre-resultats{% if mode == "dossiers" %} dossiers-seuls{% endif %}">
   {% for s in arbre %}
   <details class="arbre-dossier source" open>
     <summary>

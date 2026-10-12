@@ -233,6 +233,10 @@ def _opendocument(chemin: Path) -> Resultat:
 def _pdf(chemin: Path) -> Resultat:
     import pymupdf
 
+    # Messages de MuPDF sur la console : ils casseraient la barre de progression. Les vraies
+    # erreurs lèvent une exception et sont enregistrées dans le document.
+    pymupdf.TOOLS.mupdf_display_errors(False)
+
     with pymupdf.open(chemin) as doc:
         if doc.needs_pass:
             return Resultat(statut="erreur", erreur="PDF protégé par mot de passe")

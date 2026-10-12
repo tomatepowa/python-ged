@@ -26,6 +26,10 @@ TAILLE_VOCABULAIRE_MIN = 1000
 def ocr(chemin: Path, tessdata: str, langue: str = "fra", dpi: int = 300) -> Resultat:
     import pymupdf
 
+    # Messages de MuPDF sur la console : ils casseraient la barre de progression. Les vraies
+    # erreurs lèvent une exception et sont enregistrées dans le document.
+    pymupdf.TOOLS.mupdf_display_errors(False)
+
     if not Path(tessdata, f"{langue}.traineddata").is_file():
         raise RuntimeError(f"Fichier de langue introuvable : {Path(tessdata, langue + '.traineddata')}")
 

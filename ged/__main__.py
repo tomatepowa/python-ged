@@ -7,6 +7,7 @@ import logging
 import sys
 
 from ged import config as configuration
+from ged.progression import installer_filtre
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -41,6 +42,8 @@ def main(argv: list[str] | None = None) -> None:
         format="%(asctime)s %(levelname)-7s %(message)s",
         datefmt="%H:%M:%S",
     )
+    # Les messages du journal s'écrivent sur leur propre ligne, au-dessus de la barre de progression
+    installer_filtre()
     cfg = configuration.charger(args.config)
 
     if args.commande == "init-db":

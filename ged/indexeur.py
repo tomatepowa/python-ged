@@ -22,6 +22,7 @@ from ged.config import Config, Source
 from ged.droits import lire_securite
 from ged.extraction import Resultat, extraire, famille
 from ged.ocr import ocr, texte_exploitable
+from ged.progression import Inventaire, Progression
 from ged.taxonomie import Taxonomie
 from ged.texte import detecter_code
 
@@ -161,16 +162,28 @@ class Indexeur:
 
         dossiers_inaccessibles: list[Path] = []
         fichiers_illisibles: list[str] = []
-        for i, chemin in enumerate(parcourir(source.chemin, self.cfg.exclure, dossiers_inaccessibles), start=1):
-            try:
-                bilan[self._indexer_fichier(source, source_id, chemin, forcer)] += 1
-            except OSError as exc:
-                log.warning("Illisible : %s (%s)", chemin, exc)
-                bilan["illisible"] += 1
-                fichiers_illisibles.append(str(chemin))
-            if i % COMMIT_TOUS_LES == 0:
-                self.conn.commit()
-                log.info("  %d fichiers parcourus", i)
+        # Inventaire d'abord (noms et dossiers seulement, rapide) : le total permet d'afficher
+        # une barre de progression et une estimation du temps restant
+        fichiers: list[Path] = []
+        with Inventaire("Inventaire") as inventaire:
+            for chemin in parcourir(source.chemin, self.cfg.exclure, dossiers_inaccessibles):
+                fichiers.append(chemin)
+                inventaire.compter()
+        log.info("  %d fichiers à examiner", len(fichiers))
+
+        with Progression(len(fichiers), "Indexation") as progression:
+            for i, chemin in enumerate(fichiers, start=1):
+                progression.fichier(str(chemin.relative_to(source.chemin)))
+                try:
+                    bilan[self._indexer_fichier(source, source_id, chemin, forcer)] += 1
+                except OSError as exc:
+                    log.warning("Illisible : %s (%s)", chemin, exc)
+                    bilan["illisible"] += 1
+                    fichiers_illisibles.append(str(chemin))
+                if i % COMMIT_TOUS_LES == 0:
+                    self.conn.commit()
+                progression.fait()
+        self.conn.commit()
 
         # Les fichiers non revus pendant ce passage ont disparu de la source (ou sont désormais ignorés).
         # Sauf ceux qu'une erreur d'accès (coupure réseau, droits) a empêché de voir : ils restent
@@ -358,29 +371,31 @@ class Indexeur:
         ).fetchall()
         log.info("OCR : %d documents à traiter", len(a_traiter))
 
-        for i, doc in enumerate(a_traiter, start=1):
-            log.info("  [%d/%d] %s", i, len(a_traiter), doc["chemin_relatif"])
-            resultat = ocr(Path(doc["chemin"]), self.cfg.tessdata, self.cfg.langue_ocr, self.cfg.dpi_ocr)
-            if resultat.statut == "indexe" and not texte_exploitable(resultat.contenu, vocabulaire):
-                resultat = Resultat(statut="sans_texte", methode="ocr", nb_pages=resultat.nb_pages,
-                                    erreur=MESSAGE_SANS_TEXTE)
+        with Progression(len(a_traiter), "OCR") as progression:
+            for doc in a_traiter:
+                progression.fichier(doc["chemin_relatif"])
+                resultat = ocr(Path(doc["chemin"]), self.cfg.tessdata, self.cfg.langue_ocr, self.cfg.dpi_ocr)
+                if resultat.statut == "indexe" and not texte_exploitable(resultat.contenu, vocabulaire):
+                    resultat = Resultat(statut="sans_texte", methode="ocr", nb_pages=resultat.nb_pages,
+                                        erreur=MESSAGE_SANS_TEXTE)
 
-            if resultat.statut == "erreur":
-                self.conn.execute(
-                    "UPDATE document SET statut = 'erreur', erreur = %s WHERE id = %s", (resultat.erreur, doc["id"])
-                )
-            else:
-                # Un PDF mixte peut déjà contenir un peu de texte : l'OCR le remplace (il le contient)
-                self.conn.execute(
-                    "UPDATE document SET contenu = %s, statut = %s, methode = 'ocr', erreur = %s, "
-                    "code_doc = coalesce(code_doc, %s), nb_pages = coalesce(nb_pages, %s), indexe_le = now() "
-                    "WHERE id = %s",
-                    (resultat.contenu.replace("\x00", ""), resultat.statut, resultat.erreur,
-                     resultat.code_doc, resultat.nb_pages, doc["id"]),
-                )
-                self._appliquer_tags(doc["id"], f"{doc['titre'] or ''} {doc['chemin_relatif']}", resultat.contenu)
-            self.conn.commit()
-            bilan[resultat.statut] += 1
+                if resultat.statut == "erreur":
+                    self.conn.execute(
+                        "UPDATE document SET statut = 'erreur', erreur = %s WHERE id = %s", (resultat.erreur, doc["id"])
+                    )
+                else:
+                    # Un PDF mixte peut déjà contenir un peu de texte : l'OCR le remplace (il le contient)
+                    self.conn.execute(
+                        "UPDATE document SET contenu = %s, statut = %s, methode = 'ocr', erreur = %s, "
+                        "code_doc = coalesce(code_doc, %s), nb_pages = coalesce(nb_pages, %s), indexe_le = now() "
+                        "WHERE id = %s",
+                        (resultat.contenu.replace("\x00", ""), resultat.statut, resultat.erreur,
+                         resultat.code_doc, resultat.nb_pages, doc["id"]),
+                    )
+                    self._appliquer_tags(doc["id"], f"{doc['titre'] or ''} {doc['chemin_relatif']}", resultat.contenu)
+                self.conn.commit()
+                bilan[resultat.statut] += 1
+                progression.fait()
 
         if a_traiter:
             log.info("Vocabulaire : %d mots", rafraichir_vocabulaire(self.conn))

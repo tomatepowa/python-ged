@@ -215,7 +215,7 @@ Les tags automatiques se règlent dans [`taxonomie.toml`](taxonomie.toml) : un l
 ## Utilisation
 
 ```powershell
-uv run ged indexer             # indexe les nouveautés (rapide si peu de changements)
+uv run ged indexer             # indexe les nouveautés (rapide si peu de changements) ; barre de progression, temps restant et fichier en cours
 uv run ged indexer --forcer    # relit tous les fichiers (le texte OCR des fichiers inchangés est conservé)
 uv run ged recalculer          # réapplique tags et codes sans relire les fichiers (après modif. de taxonomie.toml)
 uv run ged ocr                 # passe en OCR les scans en attente

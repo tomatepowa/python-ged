@@ -175,6 +175,7 @@ PostgreSQL ne tourne pas en service Windows (il faudrait des droits admin). Au q
 .\outils\installation\GED-Poste.ps1 demarrer    # PostgreSQL si besoin + interface sur http://127.0.0.1:8000
 .\outils\installation\GED-Poste.ps1 indexer     # indexe les partages
 .\outils\installation\GED-Poste.ps1 ocr         # passe les scans en OCR
+.\outils\installation\GED-Poste.ps1 analyser    # rapport pour construire la taxonomie (analyse-taxonomie.md)
 .\outils\installation\GED-Poste.ps1 reinitialiser  # vide l'index pour repartir de zéro (confirmation demandée)
 .\outils\installation\GED-Poste.ps1 arreter     # arrête PostgreSQL
 ```
@@ -210,7 +211,7 @@ exclure = [
 
 **Exclure des dossiers** (dossiers d'applications, archives…) : chaque motif `exclure` porte sur le chemin complet, `*` remplaçant n'importe quelle suite de caractères, majuscules indifférentes. Un dossier visé n'est pas parcouru du tout ; au passage suivant de `ged indexer`, ses documents sortent de l'index (et y reviennent si le motif est retiré). Les programmes et bibliothèques (`.exe`, `.dll`, `.jar`, `.msi`…) sont déjà ignorés partout. Pour trouver le chemin d'un dossier : cliquer sur son nom dans l'arborescence, il s'affiche dans les filtres actifs.
 
-Les tags automatiques se règlent dans [`taxonomie.toml`](taxonomie.toml) : un libellé, une liste de mots-clés (préfixe `titre:` pour un mot-clé qui ne compte que dans le nom ou le titre du document). Après modification, `ged recalculer` réapplique les règles sans relire les fichiers. **La liste fournie est un premier jet à compléter avec les pôles** (logiciels métier réels, secteurs).
+Les tags automatiques se règlent dans [`taxonomie.toml`](taxonomie.toml) : un libellé, une liste de mots-clés (préfixe `titre:` pour un mot-clé qui ne compte que dans le nom ou le titre du document). Après modification, `ged recalculer` réapplique les règles sans relire les fichiers. Pour la construire : `ged analyser` produit un rapport (noms de dossiers, mots fréquents des noms de fichiers, couverture des tags actuels, propositions), sans le texte des documents ; [`CLAUDE.md`](CLAUDE.md) décrit la marche à suivre avec Claude Code, si la politique du groupe l'autorise. **La liste fournie est un premier jet à compléter avec les pôles** (logiciels métier réels, secteurs).
 
 ## Utilisation
 
@@ -221,6 +222,7 @@ uv run ged recalculer          # réapplique tags et codes sans relire les fichi
 uv run ged ocr                 # passe en OCR les scans en attente
 uv run ged ocr --limite 50     # ... par lots
 uv run ged serveur             # interface web sur http://127.0.0.1:8000
+uv run ged analyser           # écrit analyse-taxonomie.md : dossiers, mots fréquents, couverture des tags
 uv run ged reinitialiser       # vide l'index (confirmation demandée), puis relancer ged indexer
 ```
 

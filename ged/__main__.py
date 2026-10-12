@@ -31,6 +31,13 @@ def main(argv: list[str] | None = None) -> None:
 
     commandes.add_parser("serveur", help="lance l'interface web de recherche")
 
+    p_analyser = commandes.add_parser(
+        "analyser", help="rapport pour construire la taxonomie (dossiers, mots fréquents, couverture des tags)"
+    )
+    p_analyser.add_argument("--sortie", default="analyse-taxonomie.md", help="fichier Markdown produit")
+    p_analyser.add_argument("--min", type=int, default=3, dest="min_docs",
+                            help="nombre minimal de documents pour qu'un terme apparaisse (défaut : 3)")
+
     p_reinit = commandes.add_parser(
         "reinitialiser", help="vide l'index pour repartir de zéro (les fichiers indexés ne sont pas touchés)"
     )
@@ -77,6 +84,20 @@ def main(argv: list[str] | None = None) -> None:
         with connecter(cfg.url_base) as conn:
             bilan = Indexeur(cfg, conn).recalculer()
         _afficher_bilan("Recalcul terminé", bilan)
+
+    elif args.commande == "analyser":
+        from pathlib import Path
+
+        from ged.analyse import charger, rapport
+        from ged.db import connecter
+        from ged.taxonomie import Taxonomie
+
+        with connecter(cfg.url_base) as conn:
+            documents, comptes = charger(conn)
+        texte = rapport(documents, Taxonomie.charger(cfg.taxonomie), comptes, min_docs=args.min_docs)
+        Path(args.sortie).write_text(texte, encoding="utf-8")
+        print(f"Rapport écrit dans {Path(args.sortie).resolve()} ({len(documents)} documents analysés).")
+        print("Relisez-le avant de le partager : il peut contenir des noms de personnes ou de projets.")
 
     elif args.commande == "reinitialiser":
         from ged.db import connecter, vider_index

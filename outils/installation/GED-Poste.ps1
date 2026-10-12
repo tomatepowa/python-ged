@@ -10,6 +10,7 @@
     indexer  : démarre PostgreSQL si besoin, puis indexe les partages de config.toml
     ocr      : démarre PostgreSQL si besoin, puis passe en OCR les scans en attente
     recalculer : réapplique tags et codes (après modification de taxonomie.toml)
+    analyser : écrit analyse-taxonomie.md (statistiques pour construire taxonomie.toml)
     reinitialiser : vide l'index pour repartir de zéro (confirmation demandée), puis relancer indexer
 
 .EXAMPLE
@@ -18,7 +19,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('demarrer', 'arreter', 'etat', 'indexer', 'ocr', 'recalculer', 'reinitialiser')]
+    [ValidateSet('demarrer', 'arreter', 'etat', 'indexer', 'ocr', 'recalculer', 'reinitialiser', 'analyser')]
     [string]$Action = 'etat',
 
     [string]$Dossier = (Join-Path $env:LOCALAPPDATA 'ged')

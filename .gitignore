@@ -21,3 +21,6 @@ desktop.ini
 
 # Taxonomie de démonstration sur des documents personnels
 taxonomie.demo.toml
+
+# Rapport de « ged analyser » : statistiques tirées des documents, à ne pas versionner
+analyse-taxonomie.md

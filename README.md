@@ -198,7 +198,15 @@ exemples_recherche = "imprimante, identitovigilance, \"message d'erreur\""   # t
 nom = "GED Infra"
 chemin = '\\nas\infra\ged'
 pole = "Infra"
+
+[indexation]
+exclure = [
+    '\\nas\metier\ged\Applis\LogicielX',   # un dossier précis
+    '*\Applis\*',                          # tous les dossiers « Applis », où qu'ils soient
+]
 ```
+
+**Exclure des dossiers** (dossiers d'applications, archives…) : chaque motif `exclure` porte sur le chemin complet, `*` remplaçant n'importe quelle suite de caractères, majuscules indifférentes. Un dossier visé n'est pas parcouru du tout ; au passage suivant de `ged indexer`, ses documents sortent de l'index (et y reviennent si le motif est retiré). Les programmes et bibliothèques (`.exe`, `.dll`, `.jar`, `.msi`…) sont déjà ignorés partout. Pour trouver le chemin d'un dossier : cliquer sur son nom dans l'arborescence, il s'affiche dans les filtres actifs.
 
 Les tags automatiques se règlent dans [`taxonomie.toml`](taxonomie.toml) : un libellé, une liste de mots-clés (préfixe `titre:` pour un mot-clé qui ne compte que dans le nom ou le titre du document). Après modification, `ged recalculer` réapplique les règles sans relire les fichiers. **La liste fournie est un premier jet à compléter avec les pôles** (logiciels métier réels, secteurs).
 

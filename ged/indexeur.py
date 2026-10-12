@@ -374,7 +374,8 @@ class Indexeur:
         with Progression(len(a_traiter), "OCR") as progression:
             for doc in a_traiter:
                 progression.fichier(doc["chemin_relatif"])
-                resultat = ocr(Path(doc["chemin"]), self.cfg.tessdata, self.cfg.langue_ocr, self.cfg.dpi_ocr)
+                resultat = ocr(Path(doc["chemin"]), self.cfg.tessdata, self.cfg.langue_ocr, self.cfg.dpi_ocr,
+                               suivi=progression.page)
                 if resultat.statut == "indexe" and not texte_exploitable(resultat.contenu, vocabulaire):
                     resultat = Resultat(statut="sans_texte", methode="ocr", nb_pages=resultat.nb_pages,
                                         erreur=MESSAGE_SANS_TEXTE)

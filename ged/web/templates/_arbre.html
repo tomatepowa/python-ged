@@ -1,7 +1,7 @@
 {# Vue arborescence des résultats : seuls les dossiers contenant des documents trouvés.
    Affichage selon le contexte :
-   - accueil (ni mot-clé, ni filtre de dossier) : « dossiers seulement », tous dépliés, fichiers
-     masqués (un clic à côté du nom d'un dossier affiche ses fichiers) ;
+   - accueil (ni mot-clé, ni filtre de dossier) : tout replié, seules les sources sont ouvertes ;
+     un dossier déplié montre ses sous-dossiers (repliés) et ses fichiers ;
    - dans un dossier, sans mot-clé : comme l'explorateur, ses fichiers sont affichés et ses
      sous-dossiers repliés ;
    - recherche (mot-clé, famille, tags, période) : tout déplié avec les fichiers (au-delà de 150
@@ -11,7 +11,7 @@
 {% set cible = filtres.dossier_cible() %}
 {% if filtres.q or filtres.famille or filtres.tags or filtres.du or filtres.au %}{% set mode = "tout" %}
 {% elif cible %}{% set mode = "explorateur" %}
-{% else %}{% set mode = "dossiers" %}{% endif %}
+{% else %}{% set mode = "replie" %}{% endif %}
 {% set chemin_cible = cible[1] if cible else "" %}
 {% set tout_deplier = resultats.total <= 150 %}
 {% set icones = {"PDF": "📕", "Word": "📘", "Excel": "📗", "PowerPoint": "📙", "Image": "🖼️", "Mail": "✉️", "Video": "🎞️", "Archive": "🗜️"} %}
@@ -41,7 +41,7 @@
   {# Explorateur : seul le chemin jusqu'au dossier ouvert est déplié (il peut être au milieu d'une chaîne fusionnée) #}
   {% set sur_le_chemin = chemin_cible == b.chemin or chemin_cible.startswith(b.chemin ~ "\\")
                          or chemin_cible in b.ancetres | map(attribute=1) %}
-  {% set ouvert = (mode == "dossiers") or (mode == "tout" and (tout_deplier or profondeur < 2))
+  {% set ouvert = (mode == "tout" and (tout_deplier or profondeur < 2))
                   or (mode == "explorateur" and sur_le_chemin) %}
   <details class="arbre-dossier"{% if ouvert %} open{% endif %}>
     <summary>
@@ -70,11 +70,11 @@
 
 {% if arbre %}
 <div class="arbre-actions">
-  <button type="button" class="pastille{% if mode == "dossiers" %} actif{% endif %}" data-deplier="dossiers" title="Tous les dossiers dépliés, sans les fichiers : cliquez à côté du nom d'un dossier pour voir ses fichiers">📁 Dossiers seulement</button>
+  <button type="button" class="pastille" data-deplier="dossiers" title="Tous les dossiers dépliés, sans les fichiers : cliquez à côté du nom d'un dossier pour voir ses fichiers">📁 Dossiers seulement</button>
   <button type="button" class="pastille{% if mode == "tout" %} actif{% endif %}" data-deplier="tout">⊞ Tout déplier</button>
-  <button type="button" class="pastille" data-deplier="rien">⊟ Tout replier</button>
+  <button type="button" class="pastille{% if mode == "replie" %} actif{% endif %}" data-deplier="rien">⊟ Tout replier</button>
 </div>
-<div class="arbre-resultats{% if mode == "dossiers" %} dossiers-seuls{% endif %}">
+<div class="arbre-resultats">
   {% for s in arbre %}
   <details class="arbre-dossier source" open>
     <summary>

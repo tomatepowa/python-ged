@@ -34,3 +34,12 @@ def test_nombre_sans_espace_insecable():
     # Une sortie redirigée en cp1252 ne saurait pas écrire l'espace fine insécable
     assert nombre(1234567) == "1 234 567"
     nombre(1234567).encode("cp1252")
+
+
+def test_page_de_l_ocr_toujours_visible():
+    p = progression_a_mi_course()
+    p.page(12, 40)
+    for largeur in (200, 80):
+        assert p.texte(p.debut + 380, largeur=largeur).endswith("courant.pdf (p. 12/40)")
+    p.fichier("autre.pdf")
+    assert "p. 12" not in p.texte(p.debut + 380, largeur=200)

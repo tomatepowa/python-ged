@@ -7,6 +7,7 @@ seulement le fichier de langue (fra.traineddata) dans le dossier `tessdata`.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from pathlib import Path
 
 from ged.extraction import Resultat
@@ -23,7 +24,11 @@ MOTS_CONNUS_MIN = 3
 TAILLE_VOCABULAIRE_MIN = 1000
 
 
-def ocr(chemin: Path, tessdata: str, langue: str = "fra", dpi: int = 300) -> Resultat:
+def ocr(
+    chemin: Path, tessdata: str, langue: str = "fra", dpi: int = 300,
+    suivi: Callable[[int, int], None] | None = None,
+) -> Resultat:
+    """OCR d'un PDF scanné ou d'une image. `suivi(page, nb_pages)` est appelé avant chaque page."""
     import pymupdf
 
     # Messages de MuPDF sur la console : ils casseraient la barre de progression. Les vraies
@@ -38,10 +43,10 @@ def ocr(chemin: Path, tessdata: str, langue: str = "fra", dpi: int = 300) -> Res
             # Une image (y compris un TIFF multipage) est d'abord convertie en PDF
             if source.is_pdf:
                 pdf = source
-                pages = _ocr_pages(pdf, tessdata, langue, dpi)
+                pages = _ocr_pages(pdf, tessdata, langue, dpi, suivi)
             else:
                 with pymupdf.open("pdf", source.convert_to_pdf()) as pdf:
-                    pages = _ocr_pages(pdf, tessdata, langue, dpi)
+                    pages = _ocr_pages(pdf, tessdata, langue, dpi, suivi)
     except Exception as exc:
         return Resultat(statut="erreur", methode="ocr", erreur=f"OCR : {type(exc).__name__}: {exc}"[:500])
 
@@ -78,9 +83,11 @@ def resolution_effective(largeur_pt: float, hauteur_pt: float, dpi: int) -> int:
     return max(72, min(dpi, int(PIXELS_MAX / grand_cote_pouces)))
 
 
-def _ocr_pages(pdf, tessdata: str, langue: str, dpi: int) -> list[str]:
+def _ocr_pages(pdf, tessdata: str, langue: str, dpi: int, suivi: Callable[[int, int], None] | None) -> list[str]:
     pages = []
-    for page in pdf:
+    for numero, page in enumerate(pdf, start=1):
+        if suivi:
+            suivi(numero, pdf.page_count)
         dpi_page = resolution_effective(page.rect.width, page.rect.height, dpi)
         # full=True : la page entière est reconnue (cas des scans sans aucune couche texte)
         couche = page.get_textpage_ocr(language=langue, dpi=dpi_page, full=True, tessdata=tessdata)

@@ -112,6 +112,8 @@ class Progression:
         self.libelle = libelle
         self.faits = 0
         self.en_cours = ""
+        # Précision sur le fichier en cours (page de l'OCR), toujours visible en entier
+        self.detail = ""
         self.console = en_console()
         self.debut = time.monotonic()
         self.dernier_affichage = 0.0
@@ -125,6 +127,12 @@ class Progression:
     def fichier(self, nom: str) -> None:
         """Élément dont la lecture commence (affiché tout de suite : un gros PDF peut prendre du temps)."""
         self.en_cours = nom
+        self.detail = ""
+        self._afficher()
+
+    def page(self, numero: int, nb_pages: int) -> None:
+        """Page en cours du fichier en cours (OCR), affichée après son nom : « (p. 3/12) »."""
+        self.detail = f" (p. {numero}/{nb_pages})" if nb_pages > 1 else ""
         self._afficher()
 
     def fait(self) -> None:
@@ -160,12 +168,12 @@ class Progression:
             for morceau in (reste, rythme):
                 if len(debut) + len(morceau) + 2 + min(len(self.en_cours), 20) <= largeur:
                     debut += morceau
-        # Fichier en cours : abrégé par la gauche, le nom du fichier reste visible
-        place = largeur - len(debut) - 2
+        # Fichier en cours : abrégé par la gauche, le nom du fichier et la page restent visibles
+        place = largeur - len(debut) - 2 - len(self.detail)
         if self.en_cours and place >= 12:
             nom = self.en_cours if len(self.en_cours) <= place else "…" + self.en_cours[-(place - 1):]
-            return f"{debut}  {nom}"
-        return debut
+            return f"{debut}  {nom}{self.detail}"
+        return debut + self.detail
 
     def __exit__(self, *exc) -> None:
         global _active

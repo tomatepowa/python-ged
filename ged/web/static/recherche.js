@@ -456,8 +456,8 @@
       if (quoi !== 'rien') {
         arbre.classList.toggle('dossiers-seuls', quoi === 'dossiers');
         zone.querySelectorAll('.fichiers-visibles').forEach((d) => d.classList.remove('fichiers-visibles'));
-        zone.querySelectorAll('[data-deplier]').forEach((b) => b.classList.toggle('actif', b === deplier));
       }
+      zone.querySelectorAll('[data-deplier]').forEach((b) => b.classList.toggle('actif', b === deplier));
       return;
     }
     // Nom d'un dossier de l'arborescence (ou chemin d'un résultat, ou ⬆) : on y entre, la recherche y est limitée

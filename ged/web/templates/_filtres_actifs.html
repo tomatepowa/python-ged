@@ -2,7 +2,8 @@
    Les tags cochés se combinent en ET : sans ce rappel, un résultat vide est incompréhensible
    quand la case responsable est hors de l'écran. #}
 {% set cible = filtres.dossier_cible() %}
-{% set nb_filtres = (tags_actifs | length) + (1 if filtres.pole else 0) + (1 if filtres.famille else 0) + (1 if cible else 0) %}
+{% set periode = libelle_periode(filtres) %}
+{% set nb_filtres = (tags_actifs | length) + (1 if filtres.pole else 0) + (1 if filtres.famille else 0) + (1 if cible else 0) + (1 if periode else 0) %}
 {% if nb_filtres %}
 <div class="filtres-actifs">
   <span class="note">Filtres :</span>
@@ -25,6 +26,7 @@
       <button type="button" data-retirer="dossier" title="Chercher dans tous les dossiers">✕</button>
     </span>
   {% endif %}
+  {% if periode %}<button type="button" class="pastille" data-retirer="date" title="Modifiés pendant cette période – retirer ce filtre">📅 {{ periode }} ✕</button>{% endif %}
   {% if filtres.pole %}<button type="button" class="pastille" data-retirer="pole">Pôle : {{ filtres.pole }} ✕</button>{% endif %}
   {% if filtres.famille %}<button type="button" class="pastille" data-retirer="famille">Type : {{ filtres.famille }} ✕</button>{% endif %}
   {% for t in tags_actifs %}
@@ -40,3 +42,4 @@
 {% endif %}
 {% endif %}
 <script type="application/json" id="compte-tags">{{ resultats.compte_tags | tojson }}</script>
+<script type="application/json" id="compte-mois">{{ resultats.compte_mois | tojson }}</script>

@@ -4,12 +4,12 @@
      masqués (un clic à côté du nom d'un dossier affiche ses fichiers) ;
    - dans un dossier, sans mot-clé : comme l'explorateur, ses fichiers sont affichés et ses
      sous-dossiers repliés ;
-   - recherche (mot-clé, famille, tags) : tout déplié avec les fichiers (au-delà de 150
+   - recherche (mot-clé, famille, tags, période) : tout déplié avec les fichiers (au-delà de 150
      résultats, seuls les deux premiers niveaux).
    Clic sur le nom d'un dossier : on entre dedans (la recherche y est limitée) ; clic ailleurs
    sur la ligne : il se déplie / se replie. #}
 {% set cible = filtres.dossier_cible() %}
-{% if filtres.q or filtres.famille or filtres.tags %}{% set mode = "tout" %}
+{% if filtres.q or filtres.famille or filtres.tags or filtres.du or filtres.au %}{% set mode = "tout" %}
 {% elif cible %}{% set mode = "explorateur" %}
 {% else %}{% set mode = "dossiers" %}{% endif %}
 {% set chemin_cible = cible[1] if cible else "" %}

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import date
 from functools import partial
 from itertools import islice, product
 from urllib.parse import urlencode
@@ -20,6 +21,8 @@ PAR_PAGE = 20
 NIVEAUX_CHEMIN = 4
 # Au-delà, la vue arborescence est tronquée (il faut affiner la recherche)
 DOCUMENTS_ARBRE_MAX = 5000
+# Bornes de la période (frise des dates) : "2020" ou "2020-03"
+_PERIODE = re.compile(r"(\d{4})(?:-(\d{2}))?")
 # Guillemets, exclusion (-mot) ou OR : syntaxe "moteur de recherche", traitée par websearch_to_tsquery
 _OPERATEURS = re.compile(r'"|(?:^|\s)-\w|\sOR\s')
 
@@ -32,15 +35,20 @@ class Filtres:
     tags: list[int] = field(default_factory=list)
     # Limite la recherche à un dossier et ses sous-dossiers : "<id source>:<chemin relatif>"
     dossier: str = ""
+    # Période de dernière modification, bornes incluses : "2020" ou "2020-03" (frise des dates)
+    du: str = ""
+    au: str = ""
     # Affichage des résultats : "arbre" (par défaut) ou "liste"
     vue: str = "arbre"
+    # Ordre de la vue liste : "" (pertinence), "recent" ou "ancien"
+    tri: str = ""
     page: int = 1
 
     def lien(self, page: int | None = None) -> str:
         """Query string de cette recherche (pour la pagination et l'URL partageable)."""
         parametres = [
             ("q", self.q), ("pole", self.pole), ("famille", self.famille), ("dossier", self.dossier),
-            ("vue", "liste" if self.vue == "liste" else ""),
+            ("du", self.du), ("au", self.au), ("vue", "liste" if self.vue == "liste" else ""), ("tri", self.tri),
         ]
         parametres += [("tag", t) for t in self.tags]
         if (page or self.page) > 1:
@@ -51,6 +59,25 @@ class Filtres:
         """(id de la source, chemin relatif) du filtre dossier, None s'il est absent ou invalide."""
         source, _, chemin = self.dossier.partition(":")
         return (int(source), chemin.strip("\\")) if source.isdigit() else None
+
+    def periode(self) -> tuple[date | None, date | None]:
+        """(premier jour inclus, premier jour exclu) de la période ; None pour une borne absente ou invalide."""
+        return _borne(self.du, fin=False), _borne(self.au, fin=True)
+
+
+def _borne(valeur: str, fin: bool) -> date | None:
+    """'2020' -> 1er janvier 2020 (ou 2021 pour une fin) ; '2020-03' -> 1er mars (ou 1er avril)."""
+    m = _PERIODE.fullmatch(valeur.strip())
+    if not m:
+        return None
+    annee, mois = int(m[1]), int(m[2] or 0)
+    if not 1900 <= annee <= 2999 or mois > 12:
+        return None
+    if not mois:
+        return date(annee + fin, 1, 1)
+    if fin:
+        annee, mois = (annee + 1, 1) if mois == 12 else (annee, mois + 1)
+    return date(annee, mois, 1)
 
 
 @dataclass
@@ -64,6 +91,9 @@ class Resultats:
     # Pour chaque tag : nombre de documents trouvés qui le portent, c'est-à-dire le nombre de
     # résultats si on cochait ce tag en plus (les tags se combinent en ET)
     compte_tags: dict[int, int] = field(default_factory=dict)
+    # Frise des dates : nombre de documents trouvés par mois de modification ("2020-03": 12),
+    # sans tenir compte de la période choisie (la frise montre ce qu'il y a autour)
+    compte_mois: dict[str, int] = field(default_factory=dict)
 
 
 def decouper(q: str) -> list[str]:
@@ -229,6 +259,26 @@ def _executer(
         parametres["dossier_source"] = cible[0]
         parametres["dossier_prefixe"] = cible[1] + "\\" if cible[1] else ""
 
+    compte_mois = {
+        ligne["mois"]: ligne["nb"]
+        for ligne in conn.execute(
+            f"""
+            SELECT to_char(d.modifie_le, 'YYYY-MM') AS mois, count(*) AS nb
+            FROM document d JOIN source s ON s.id = d.source_id
+            WHERE {' AND '.join(conditions)}
+            GROUP BY 1
+            """,
+            parametres,
+        )
+    }
+    debut, fin = filtres.periode()
+    if debut:
+        conditions.append("d.modifie_le >= %(debut)s")
+        parametres["debut"] = debut
+    if fin:
+        conditions.append("d.modifie_le < %(fin)s")
+        parametres["fin"] = fin
+
     compte_tags = {
         ligne["tag_id"]: ligne["nb"]
         for ligne in conn.execute(
@@ -256,18 +306,21 @@ def _executer(
             """,
             {**parametres, "max_arbre": DOCUMENTS_ARBRE_MAX},
         ).fetchall()
-        return Resultats(lignes, len(lignes), mode, compte_tags=compte_tags)
+        return Resultats(lignes, len(lignes), mode, compte_tags=compte_tags, compte_mois=compte_mois)
 
     # En deux temps : 1) classer tous les documents trouvés (rapide, index GIN), 2) ne lire le
     # texte et les tags que pour la page affichée. L'extrait surligné est fabriqué en Python
     # (ged.extraits) : ts_headline coûtait ~15 ms par long document.
+    ordre = {"recent": "{t}modifie_le DESC", "ancien": "{t}modifie_le ASC"}.get(
+        filtres.tri, "{t}rang DESC, {t}modifie_le DESC"
+    )
     sql = f"""
         WITH page AS (
             SELECT d.id, {rang} AS rang, d.modifie_le, count(*) OVER () AS total
             FROM document d
             JOIN source s ON s.id = d.source_id
             WHERE {' AND '.join(conditions)}
-            ORDER BY rang DESC, d.modifie_le DESC
+            ORDER BY {ordre.format(t="")}, d.id
             LIMIT %(limite)s OFFSET %(decalage)s
         )
         SELECT d.id, d.source_id, d.nom, d.titre, d.chemin, d.chemin_relatif, d.famille, d.extension,
@@ -281,7 +334,7 @@ def _executer(
         FROM page
         JOIN document d ON d.id = page.id
         JOIN source s ON s.id = d.source_id
-        ORDER BY page.rang DESC, page.modifie_le DESC
+        ORDER BY {ordre.format(t="page.")}, page.id
     """
     lignes = conn.execute(sql, parametres).fetchall()
     motif = construire_motif(surligner or [])
@@ -291,7 +344,7 @@ def _executer(
         ligne["dossier"] = dossier_parent(ligne["chemin_relatif"])
         ligne["chemin_decoupe"] = decouper_chemin(fil_ariane(ligne["dossier"]))
     total = lignes[0]["total"] if lignes else 0
-    return Resultats(lignes, total, mode, compte_tags=compte_tags)
+    return Resultats(lignes, total, mode, compte_tags=compte_tags, compte_mois=compte_mois)
 
 
 COMPLETIONS_MAX = 6

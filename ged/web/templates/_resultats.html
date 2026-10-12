@@ -3,7 +3,7 @@
 {% include "_filtres_actifs.html" %}
 <p class="resume">
   {% if resultats.mode == "recents" %}
-    {{ resultats.total }} document{{ "s" if resultats.total > 1 }} — les plus récents en premier
+    {{ resultats.total }} document{{ "s" if resultats.total > 1 }} — les plus {{ "anciens" if filtres.tri == "ancien" else "récents" }} en premier
   {% elif resultats.total == 0 %}
     Aucun résultat pour « {{ filtres.q }} ». Essayez un autre mot, ou retirez des filtres.
   {% else %}

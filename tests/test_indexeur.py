@@ -107,3 +107,12 @@ def test_deplacement_seulement_si_l_ancien_fichier_a_disparu(tmp_path):
     assert a_quitte(str(tmp_path / "ancien nom.pdf"), nouveau)
     # Changement de casse seule : l'ancien chemin « existe » encore sous Windows
     assert a_quitte(str(present), str(tmp_path / "passeport.pdf"))
+
+
+def test_periode_bornes_incluses_par_annee_ou_par_mois():
+    from datetime import date
+
+    assert Filtres(du="2020", au="2022").periode() == (date(2020, 1, 1), date(2023, 1, 1))
+    assert Filtres(du="2021-03", au="2021-12").periode() == (date(2021, 3, 1), date(2022, 1, 1))
+    assert Filtres(du="n'importe", au="2021-13").periode() == (None, None)
+    assert "du=2020&au=2021-03" in Filtres(du="2020", au="2021-03").lien()

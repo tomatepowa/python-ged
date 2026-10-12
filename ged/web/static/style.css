@@ -375,3 +375,82 @@ a.badge.tag:hover { outline: 1px solid var(--tag-texte); }
 /* « Dossiers seulement » : fichiers masqués, sauf dans les dossiers sur lesquels on a cliqué */
 .dossiers-seuls .arbre-fichier { display: none; }
 .dossiers-seuls .fichiers-visibles > .arbre-contenu > .arbre-fichier { display: block; }
+
+/* Tri de la vue liste (masqué en arborescence) */
+.tri { display: inline-flex; align-items: center; gap: .4rem; margin-left: 1rem; font-size: .9rem; color: var(--texte-doux); }
+.tri select { padding: .3rem .4rem; border: 1px solid var(--bordure); border-radius: 6px; background: var(--surface); color: var(--texte); font: inherit; }
+.colonne-resultats:has(.vues input[value=""]:checked) .tri { display: none; }
+
+/* Frise des dates, sous la barre de recherche (bouton 📅) : courbe fine, une colonne cliquable
+   par année (ou par mois), deux poignées */
+.bouton-frise { padding: .8rem .9rem; background: var(--badge); color: var(--texte); font-weight: 500; }
+.bouton-frise[aria-expanded="true"] { outline: 2px solid var(--accent); outline-offset: -2px; }
+.frise {
+  margin: -.75rem 0 1.25rem;
+  padding: .45rem .9rem .3rem;
+  background: var(--surface);
+  border: 1px solid var(--bordure);
+  border-radius: 10px;
+}
+.frise-entete { display: flex; align-items: baseline; gap: .75rem; margin-bottom: .3rem; font-size: .85rem; color: var(--texte-doux); }
+.frise-titre { font-weight: 600; }
+.frise.choisie .frise-choix { color: var(--accent); font-weight: 600; }
+.frise-toutes { margin-left: auto; padding: 0 .4rem; background: none; color: var(--accent); font-size: .85rem; font-weight: 500; }
+.frise-toutes:hover { text-decoration: underline; }
+.frise-batons, .frise-axe { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); }
+.frise-batons { position: relative; height: 30px; }
+.frise-courbe { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.frise-ligne { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.frise-ligne.grisee { stroke: var(--texte-doux); opacity: .35; }
+.frise-aire { fill: var(--accent); opacity: .12; }
+/* Colonnes cliquables : transparentes, un trait vertical presque invisible, marqué au survol */
+.frise-baton { position: relative; height: 100%; padding: 0; border-radius: 0; background: none; }
+.frise-baton::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: var(--texte-doux);
+  opacity: .12;
+}
+.frise-baton:hover::after { opacity: .7; }
+.frise-axe { margin-top: .45rem; font-size: .72rem; color: var(--texte-doux); }
+.frise-axe span { overflow: visible; text-align: center; white-space: nowrap; }
+/* Deux curseurs superposés : seules les poignées captent la souris, les bâtons restent cliquables.
+   Décalés d'une demi-colonne (moins une demi-poignée) pour que chaque cran tombe sur un bâton. */
+.frise-poignees { position: absolute; inset: 0; pointer-events: none; }
+.frise-poignees input {
+  position: absolute;
+  bottom: -8px;
+  left: calc(50% / var(--n) - 7px);
+  width: calc((var(--n) - 1) * 100% / var(--n) + 14px);
+  height: 16px;
+  margin: 0;
+  background: none;
+  appearance: none;
+  pointer-events: none;
+}
+.frise-poignees input::-webkit-slider-runnable-track { background: none; }
+.frise-poignees input::-webkit-slider-thumb {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: ew-resize;
+  appearance: none;
+  pointer-events: auto;
+}
+.frise-poignees input::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: ew-resize;
+  pointer-events: auto;
+}
+.frise-poignees input:focus-visible { outline: none; }
+.frise-poignees input:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--accent); outline-offset: 2px; }

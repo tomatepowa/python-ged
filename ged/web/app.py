@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -45,6 +45,47 @@ def lien_dossier(source_id: int, chemin: str = "") -> str:
 templates.env.globals["lien_dossier"] = lien_dossier
 templates.env.globals["fil_ariane"] = fil_ariane
 templates.env.filters["date"] = lambda d: d.astimezone().strftime("%d/%m/%Y") if d else ""
+
+
+MOIS = ("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
+        "septembre", "octobre", "novembre", "décembre")
+
+
+def libelle_periode(filtres: Filtres) -> str:
+    """« 2020 → 2022 », « mars 2021 », « depuis 2020 »... pour la pastille du filtre de dates."""
+    def libelle(borne: str) -> str:
+        annee, _, mois = borne.partition("-")
+        return f"{MOIS[int(mois) - 1]} {annee}" if mois else annee
+
+    debut, fin = filtres.periode()
+    du, au = (libelle(filtres.du) if debut else ""), (libelle(filtres.au) if fin else "")
+    if du and au:
+        return du if du == au else f"{du} → {au}"
+    return f"depuis {du}" if du else f"jusqu'à {au}" if au else ""
+
+
+templates.env.globals["libelle_periode"] = libelle_periode
+
+
+def lire_filtres(
+    q: str = "",
+    pole: str = "",
+    famille: str = "",
+    tag: Annotated[list[int], Query()] = [],
+    dossier: str = "",
+    du: str = "",
+    au: str = "",
+    vue: str = "",
+    tri: str = "",
+    page: int = 1,
+) -> Filtres:
+    """Filtres de recherche lus dans l'URL (communs à la page complète et au fragment de résultats)."""
+    return Filtres(
+        q=q, pole=pole, famille=famille, tags=tag, dossier=dossier, du=du, au=au,
+        vue="liste" if vue == "liste" else "arbre",
+        tri=tri if tri in ("recent", "ancien") else "",
+        page=max(page, 1),
+    )
 
 
 def libelle_du_dossier(conn, filtres: Filtres) -> str | None:
@@ -99,17 +140,7 @@ def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
         }
 
     @app.get("/", response_class=HTMLResponse)
-    def accueil(
-        request: Request,
-        q: str = "",
-        pole: str = "",
-        famille: str = "",
-        tag: Annotated[list[int], Query()] = [],
-        dossier: str = "",
-        vue: str = "",
-        page: int = 1,
-    ):
-        filtres = Filtres(q=q, pole=pole, famille=famille, tags=tag, dossier=dossier, vue="liste" if vue == "liste" else "arbre", page=max(page, 1))
+    def accueil(request: Request, filtres: Annotated[Filtres, Depends(lire_filtres)]):
         with pool.connection() as conn:
             contexte = contexte_resultats(filtres, conn)
             choix = facettes(conn)
@@ -123,18 +154,8 @@ def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
         )
 
     @app.get("/resultats", response_class=HTMLResponse)
-    def resultats_seuls(
-        request: Request,
-        q: str = "",
-        pole: str = "",
-        famille: str = "",
-        tag: Annotated[list[int], Query()] = [],
-        dossier: str = "",
-        vue: str = "",
-        page: int = 1,
-    ):
+    def resultats_seuls(request: Request, filtres: Annotated[Filtres, Depends(lire_filtres)]):
         """Fragment HTML de la liste de résultats, pour la recherche pendant la frappe."""
-        filtres = Filtres(q=q, pole=pole, famille=famille, tags=tag, dossier=dossier, vue="liste" if vue == "liste" else "arbre", page=max(page, 1))
         with pool.connection() as conn:
             contexte = contexte_resultats(filtres, conn)
         return templates.TemplateResponse(request, contexte["gabarit"], contexte)

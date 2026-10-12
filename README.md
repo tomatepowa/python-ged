@@ -258,6 +258,8 @@ powershell -ExecutionPolicy Bypass -File .\outils\inventaire\Inventaire-GED.ps1 
     -Chemin '\\nas\metier\ged','\\nas\infra\ged' -Approfondi -Sortie C:\Temp\inventaire
 ```
 
+Pour ne pas tout retaper : copier [`Inventaire-GED.exemple.psd1`](outils/inventaire/Inventaire-GED.exemple.psd1) en `Inventaire-GED.config.psd1` (même dossier, non versionné), y mettre les dossiers, la sortie et les exclusions, puis lancer le script sans paramètre. Un dossier exclu n'est pas parcouru du tout ; les programmes et bibliothèques (`.exe`, `.dll`, `.jar`, `.msi`…) sont comptés comme fichiers parasites, comme dans la GED.
+
 Résultat : un `rapport.txt` de synthèse et des CSV détaillés (ouvrables dans Excel). Voir l'aide intégrée : `Get-Help .\outils\inventaire\Inventaire-GED.ps1 -Full`.
 
 ## Structure du projet

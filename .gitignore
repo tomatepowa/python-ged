@@ -12,6 +12,8 @@ config.toml
 
 # Résultats de l'outil d'inventaire (contiennent des chemins internes)
 inventaire_*/
+# Configuration locale de l'inventaire (chemins internes)
+outils/inventaire/Inventaire-GED.config.psd1
 
 # Éditeurs / système
 .vscode/

@@ -26,7 +26,7 @@
     Ne nécessite pas de droits administrateur.
 
 .PARAMETER Chemin
-    Un ou plusieurs dossiers racine à inventorier.
+    Un ou plusieurs dossiers racine à inventorier (ou Chemin dans le fichier de configuration).
 
 .PARAMETER Sortie
     Dossier de résultats. Par défaut : .\inventaire_AAAAMMJJ_HHMMSS dans le dossier courant.
@@ -41,10 +41,21 @@
     Nettement plus lent sur un partage réseau.
 
 .PARAMETER Exclure
-    Motifs de chemins à ignorer, au format -like. Ex : '*\Archives\*', '*\~snapshot\*'
+    Motifs de chemins à ignorer, au format -like. Ex : '*\Archives\*', '\\nas\metier\Applis\LogicielX'
+    Un dossier visé n'est pas parcouru du tout (utile pour les dossiers d'applications).
+
+.PARAMETER Config
+    Fichier de configuration (.psd1) qui évite de tout taper en console : Chemin, Sortie,
+    Exclure, Approfondi, TaillePdfMaxMo. Par défaut : Inventaire-GED.config.psd1 à côté du
+    script, s'il existe (modèle : Inventaire-GED.exemple.psd1). Un paramètre tapé en console
+    l'emporte sur le fichier.
 
 .PARAMETER TaillePdfMaxMo
     En mode approfondi, les PDF plus gros que cette taille ne sont pas analysés. Défaut : 50.
+
+.EXAMPLE
+    powershell -ExecutionPolicy Bypass -File .\Inventaire-GED.ps1
+    (tout est lu dans Inventaire-GED.config.psd1)
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File .\Inventaire-GED.ps1 -Chemin "$env:USERPROFILE\Documents"
@@ -54,8 +65,8 @@
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true, Position = 0)]
-    [string[]]$Chemin,
+    [Parameter(Position = 0)]
+    [string[]]$Chemin = @(),
 
     [string]$Sortie,
 
@@ -63,8 +74,36 @@ param(
 
     [string[]]$Exclure = @(),
 
-    [int]$TaillePdfMaxMo = 50
+    [int]$TaillePdfMaxMo = 50,
+
+    [string]$Config
 )
+
+# Fichier de configuration : valeurs par défaut, un paramètre tapé en console l'emporte
+if (-not $Config) {
+    $parDefaut = Join-Path $PSScriptRoot 'Inventaire-GED.config.psd1'
+    if (Test-Path -LiteralPath $parDefaut) { $Config = $parDefaut }
+}
+if ($Config) {
+    if (-not (Test-Path -LiteralPath $Config)) { throw "Fichier de configuration introuvable : $Config" }
+    $reglages = Import-PowerShellDataFile -LiteralPath $Config
+    $autorises = 'Chemin', 'Sortie', 'Approfondi', 'Exclure', 'TaillePdfMaxMo'
+    foreach ($cle in $reglages.Keys) {
+        if ($autorises -notcontains $cle) { throw "Réglage inconnu dans $Config : $cle (attendus : $($autorises -join ', '))" }
+        if ($PSBoundParameters.ContainsKey($cle)) { continue }
+        switch ($cle) {
+            'Chemin'         { $Chemin = @($reglages.Chemin) }
+            'Sortie'         { $Sortie = [string]$reglages.Sortie }
+            'Approfondi'     { $Approfondi = [bool]$reglages.Approfondi }
+            'Exclure'        { $Exclure = @($reglages.Exclure) }
+            'TaillePdfMaxMo' { $TaillePdfMaxMo = [int]$reglages.TaillePdfMaxMo }
+        }
+    }
+    Write-Host "Configuration : $Config"
+}
+if (-not $Chemin.Count) {
+    throw "Aucun dossier à inventorier : passez -Chemin, ou renseignez Chemin dans Inventaire-GED.config.psd1 (modèle : Inventaire-GED.exemple.psd1)."
+}
 
 $debut = Get-Date
 $encodage = if ($PSVersionTable.PSVersion.Major -ge 6) { 'utf8BOM' } else { 'UTF8' }   # BOM pour qu'Excel lise les accents
@@ -84,7 +123,7 @@ $famillesExtensions = [ordered]@{
     'Mail'       = '.msg', '.eml'
     'Texte'      = '.txt', '.md', '.log', '.xml', '.json', '.ini', '.html', '.htm'
     'Script'     = '.ps1', '.psm1', '.bat', '.cmd', '.vbs', '.sql', '.py', '.sh', '.reg'
-    'Archive'    = '.zip', '.7z', '.rar', '.gz', '.tar', '.cab'
+    'Archive'    = '.zip', '.7z', '.rar', '.gz', '.tar'
     'Video'      = '.mp4', '.mov', '.avi', '.mkv', '.wmv'
     'Sensible'   = '.kdbx', '.kdb', '.pfx', '.p12', '.key', '.pem', '.ppk'
 }
@@ -120,8 +159,12 @@ $nomsBruit        = 'thumbs.db', 'desktop.ini', '.ds_store'
 
 # Dossiers techniques ignorés d'office : corbeilles et vignettes de NAS (Synology, QNAP), instantanés,
 # historiques de synchronisation. Ce ne sont pas des documents.
-$motifDossiersSysteme = '\\(?:#recycle|@eaDir|@Recycle|\.@__thumb|#snapshot|~snapshot|\.snapshot|\.stversions|\$RECYCLE\.BIN|System Volume Information)\\'
-$extensionsBruit  = '.tmp', '.lnk'
+$nomsDossiersSysteme = '#recycle', '@eadir', '@recycle', '.@__thumb', '#snapshot', '~snapshot', '.snapshot',
+                       '.stversions', '$recycle.bin', 'system volume information'
+$extensionsBruit  = '.tmp', '.lnk', '.url',
+                    # Programmes et bibliothèques (comme l'indexeur de la GED) : aucun intérêt documentaire
+                    '.exe', '.dll', '.sys', '.ocx', '.drv', '.cpl', '.msi', '.msp', '.cab', '.jar', '.war',
+                    '.class', '.so', '.pyc', '.pyo', '.pdb', '.obj', '.o', '.lib', '.a'
 
 # Marqueurs de version dans un nom de fichier (appliqué sur un nom en minuscules sans accents)
 $motifVersion = '(?:^|[\s_\-\.\(])(?:v|ver|version|rev|indice)\s*[\._]?\s*\d+(?:[\._]\d+)*' +
@@ -299,6 +342,45 @@ function Get-ProprietesOffice([string]$chemin) {
     finally { if ($zip) { $zip.Dispose() } }
 }
 
+# Fichiers sous $racine, sans descendre dans les dossiers système ni dans les dossiers exclus
+# (Get-ChildItem -Recurse parcourrait tout avant de filtrer : très lent sur un dossier
+# d'application aux milliers de sous-dossiers). Les dossiers illisibles vont dans $erreurs.
+function Get-FichiersParcourus([string]$racine) {
+    $pile = New-Object System.Collections.Generic.Stack[System.IO.DirectoryInfo]
+    $pile.Push((New-Object System.IO.DirectoryInfo $racine))
+    $chrono = [System.Diagnostics.Stopwatch]::StartNew()
+    while ($pile.Count) {
+        $dossier = $pile.Pop()
+        # Au plus 4 fois par seconde : Write-Progress est très lent sous PowerShell 5.1
+        if ($chrono.ElapsedMilliseconds -ge 250) {
+            Write-Progress -Activity "Inventaire de $racine" -Status "$($script:compteur) fichiers parcourus" -CurrentOperation $dossier.FullName
+            $chrono.Restart()
+        }
+        try {
+            $contenu = $dossier.GetFiles()
+            $sousDossiers = $dossier.GetDirectories()
+        }
+        catch {
+            $exception = if ($_.Exception.InnerException) { $_.Exception.InnerException } else { $_.Exception }
+            $script:erreurs.Add([pscustomobject]@{ Chemin = $dossier.FullName; Erreur = $exception.Message })
+            continue
+        }
+        $contenu
+        # Ordre alphabétique de parcours : la pile ressort le dernier empilé en premier
+        foreach ($sous in @($sousDossiers | Sort-Object Name -Descending)) {
+            # Jonctions et liens symboliques : déjà visibles ailleurs, ou boucle possible
+            if ($sous.Attributes -band [System.IO.FileAttributes]::ReparsePoint) { continue }
+            if ($nomsDossiersSysteme -contains $sous.Name.ToLowerInvariant()) { $script:nbDossiersSysteme++; continue }
+            $exclu = $false
+            foreach ($motif in $Exclure) {
+                if ($sous.FullName -like $motif -or ($sous.FullName + '\') -like $motif) { $exclu = $true; break }
+            }
+            if ($exclu) { $script:nbDossiersExclus++; continue }
+            $pile.Push($sous)
+        }
+    }
+}
+
 function Export-Tableau($donnees, [string]$nomFichier) {
     $chemin = Join-Path $Sortie $nomFichier
     if ($null -eq $donnees -or $donnees.Count -eq 0) {
@@ -337,22 +419,18 @@ New-Item -ItemType Directory -Path $Sortie -Force | Out-Null
 # ============================================================================
 
 $fichiers = New-Object System.Collections.Generic.List[object]
-$nbIgnoresSysteme = 0
+$nbDossiersSysteme = 0
+$nbDossiersExclus = 0
 $erreurs = New-Object System.Collections.Generic.List[object]
 
 foreach ($racine in $racines) {
     $compteur = 0
-    $erreursParcours = $null
 
-    Get-ChildItem -LiteralPath $racine -Recurse -File -Force -ErrorAction SilentlyContinue -ErrorVariable erreursParcours |
+    Get-FichiersParcourus $racine |
         ForEach-Object {
             $f = $_
             $compteur++
-            if ($compteur % 250 -eq 0) {
-                Write-Progress -Activity "Inventaire de $racine" -Status "$compteur fichiers parcourus" -CurrentOperation $f.DirectoryName
-            }
 
-            if ($f.FullName -match $motifDossiersSysteme) { $nbIgnoresSysteme++; return }
             foreach ($motif in $Exclure) {
                 if ($f.FullName -like $motif) { return }
             }
@@ -408,9 +486,6 @@ foreach ($racine in $racines) {
         }
 
     Write-Progress -Activity "Inventaire de $racine" -Completed
-    foreach ($e in $erreursParcours) {
-        $erreurs.Add([pscustomobject]@{ Chemin = [string]$e.TargetObject; Erreur = $e.Exception.Message })
-    }
 }
 
 $utiles = @($fichiers | Where-Object { $_.Bruit -eq 'Non' })
@@ -579,14 +654,16 @@ $L.Add('=========================================')
 $L.Add("Date            : $($debut.ToString('dd/MM/yyyy HH:mm'))")
 $L.Add("Mode            : $(if ($Approfondi) { 'approfondi (contenu analyse en lecture seule)' } else { 'rapide (metadonnees uniquement)' })")
 foreach ($racine in $racines) { $L.Add("Dossier analyse : $racine") }
+if ($Config) { $L.Add("Configuration   : $Config") }
 if ($Exclure.Count) { $L.Add("Exclusions      : $($Exclure -join ', ')") }
 
 Add-Section 'VUE D''ENSEMBLE'
 $L.Add(('  Fichiers utiles             : {0:N0}' -f $total))
 $L.Add(('  Volume total                : {0}' -f (Format-Taille $volumeTotal)))
 $L.Add(('  Dossiers contenant fichiers : {0:N0}' -f @($utiles | ForEach-Object { $_.Dossier } | Sort-Object -Unique).Count))
-$L.Add(('  Fichiers parasites ignores  : {0:N0}  (~$ temporaires Office, Thumbs.db, raccourcis...)' -f ($fichiers.Count - $total)))
-$L.Add(('  Dossiers systeme ignores    : {0:N0} fichiers  (corbeilles et vignettes NAS, snapshots, .stversions...)' -f $nbIgnoresSysteme))
+$L.Add(('  Fichiers parasites ignores  : {0:N0}  (~$ temporaires Office, Thumbs.db, raccourcis, programmes .exe/.dll...)' -f ($fichiers.Count - $total)))
+$L.Add(('  Dossiers systeme ignores    : {0:N0}  (corbeilles et vignettes NAS, snapshots, .stversions...)' -f $nbDossiersSysteme))
+if ($Exclure.Count) { $L.Add(('  Dossiers exclus (non lus)   : {0:N0}' -f $nbDossiersExclus)) }
 $L.Add(('  Erreurs d''acces             : {0:N0}  (voir erreurs_acces.csv)' -f $erreurs.Count))
 
 Add-Section 'PAR TYPE DE DOCUMENT'

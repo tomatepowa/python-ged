@@ -47,6 +47,7 @@ with sync_playwright() as p:
         page.screenshot(path=f"{SORTIE}/suggestions{suffixe}.png", clip={"x": 0, "y": 0, "width": 1280, "height": 420})
 
         page.goto(BASE + "/?q=vpn&vue=liste")
+        champ.blur()  # sinon la liste de suggestions, ouverte au focus, couvre le résultat à cliquer
         page.get_by_role("link", name="Connexion VPN FortiClient impossible.docx").click()
         page.wait_for_load_state()
         capturer("document", pleine_page=True)

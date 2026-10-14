@@ -67,7 +67,7 @@
     <p class="acces-moi">
       {% if accordant %}
         Vous voyez ce document grâce à
-        {% for nom in accordant %}<strong>{{ nom }}</strong>{{ ", " if not loop.last }}{% endfor %}.
+        {% for a in accordant %}<strong>{{ a.nom }}</strong>{% if a.via %} <span class="note">(via {{ a.via | join(" › ") }})</span>{% endif %}{{ ", " if not loop.last }}{% endfor %}.
       {% elif request.state.lecteur.admin %}
         Vous voyez ce document en tant qu'administrateur de la GED : vos groupes ne vous donnent pas le droit de le lire.
       {% endif %}

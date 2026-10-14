@@ -525,3 +525,10 @@ a.badge.tag:hover { outline: 1px solid var(--tag-texte); }
 .date a.personne { color: inherit; text-decoration: none; }
 .date a.personne:hover { color: var(--accent); text-decoration: underline; }
 .pastille.personne { background: var(--tag); color: var(--tag-texte); }
+/* Arbre des groupes de l'annuaire */
+.fiche h3 { margin: 1.1rem 0 .3rem; font-size: 1rem; }
+.arbre-groupes { margin: .2rem 0; padding-left: 1.2rem; list-style: none; }
+.arbre-groupes .arbre-groupes { border-left: 1px dotted var(--bordure); margin-left: .3rem; padding-left: .9rem; }
+.arbre-groupes li { padding: .12rem 0; }
+.arbre-groupes .groupe::before { content: "▸ "; color: var(--texte-doux); }
+.arbre-groupes .note { margin-left: .4rem; font-size: .85em; }

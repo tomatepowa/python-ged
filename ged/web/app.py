@@ -17,7 +17,8 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from ged import config as configuration
-from ged.acces import FiltreAcces, Lecteur, diagnostic_acces, filtre_acces, groupes_du_lecteur, sids_accordant
+from ged.acces import FiltreAcces, Lecteur, diagnostic_acces, filtre_acces, sids_accordant
+from ged.annuaire import AnnuaireAD, organiser_groupes, prefixe_machine
 from ged.arborescence import construire_arbre_resultats, dossier_parent, fil_ariane
 from ged.droits import nom_compte
 from ged.recherche import (
@@ -144,9 +145,18 @@ def refus_authentification(request: Request, entete: str | None) -> HTMLResponse
     )
 
 
-def creer_app(cfg: configuration.Config | None = None, negociateur: Negociateur | None = None) -> FastAPI:
-    """`negociateur` : vérification des jetons Windows (par défaut SSPI ; remplaçable dans les tests)."""
+def creer_app(
+    cfg: configuration.Config | None = None, negociateur: Negociateur | None = None, annuaire=None,
+) -> FastAPI:
+    """`negociateur` : vérification des jetons Windows (par défaut SSPI) ; `annuaire` : groupes
+    parents (par défaut l'Active Directory). Remplaçables dans les tests."""
     cfg = cfg or configuration.charger()
+    annuaire = annuaire or AnnuaireAD()
+
+    def vue_groupes(lecteur: Lecteur):
+        """Groupes de la personne, en arbre quand l'annuaire répond."""
+        disponible = bool(lecteur.sid) and annuaire.disponible
+        return organiser_groupes(lecteur, annuaire.parents, nom_compte, disponible, prefixe_machine())
     templates.env.globals["exemples_recherche"] = cfg.exemples_recherche
     pool = ConnectionPool(cfg.url_base, kwargs={"row_factory": dict_row}, min_size=1, max_size=10, open=False)
 
@@ -313,7 +323,10 @@ def creer_app(cfg: configuration.Config | None = None, negociateur: Negociateur 
         lecteur: Lecteur = request.state.lecteur
         # Ce qui donne à la personne le droit de voir ce document (vide pour un administrateur
         # de la GED que ses groupes n'autorisent pas, ou sans identification)
-        accordant = [nom_compte(sid) for sid in sids_accordant(doc["acces_sids"], doc["acces_ordre"], lecteur)]
+        sids = sids_accordant(doc["acces_sids"], doc["acces_ordre"], lecteur)
+        # Pour un groupe hérité, la chaîne qui y mène : « GED-Lecture, via DSI-Infra › DSI »
+        chemins = vue_groupes(lecteur).chemins if sids else {}
+        accordant = [{"nom": nom_compte(sid), "via": chemins.get(sid, [])[:-1]} for sid in sids]
         mes_comptes = {nom_compte(sid) for sid in lecteur.sids_refus} if lecteur.compte else set()
         return templates.TemplateResponse(
             request,
@@ -340,7 +353,7 @@ def creer_app(cfg: configuration.Config | None = None, negociateur: Negociateur 
             request,
             "moi.html",
             {
-                "lecteur": lecteur, "groupes": groupes_du_lecteur(lecteur, nom_compte),
+                "lecteur": lecteur, "groupes": vue_groupes(lecteur),
                 "documents": documents, "personnes": personnes,
             },
         )

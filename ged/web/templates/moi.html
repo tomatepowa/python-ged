@@ -28,11 +28,43 @@
   </section>
   {% endif %}
 
+  {# Arbre : sous chaque groupe, les groupes dont il est lui-même membre #}
+  {% macro arbre(groupes) %}
+  <ul class="arbre-groupes">
+    {% for g in groupes %}
+    <li>
+      <span class="groupe">{{ g.nom }}</span>
+      {% if g.aussi_via %}<span class="note">aussi via {{ g.aussi_via | join(", ") }}</span>{% endif %}
+      {% if g.enfants %}{{ arbre(g.enfants) }}{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endmacro %}
+
   <section>
-    <h2>Vos groupes ({{ groupes.actifs | length }})</h2>
-    <ul class="groupes">
-      {% for nom in groupes.actifs %}<li>{{ nom }}</li>{% endfor %}
-    </ul>
+    <h2>Vos groupes ({{ groupes.nombre }})</h2>
+    {% if groupes.arbre %}
+    <h3>Annuaire du domaine</h3>
+    <p class="note petit">Vos groupes directs, et sous chacun les groupes dont il est lui-même membre : vous en héritez les droits.</p>
+    {{ arbre(groupes.arbre) }}
+    {% elif not groupes.annuaire %}
+    <p class="note petit">Pas d'annuaire Active Directory joignable depuis le serveur de la GED (poste hors domaine) :
+      la hiérarchie des groupes n'est pas disponible.</p>
+    {% endif %}
+
+    {% if groupes.domaine_hors_arbre %}
+    <h3>Autres groupes du domaine</h3>
+    <ul class="groupes">{% for nom in groupes.domaine_hors_arbre %}<li>{{ nom }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% if groupes.locaux %}
+    <h3>Groupes locaux du serveur</h3>
+    <ul class="groupes">{% for nom in groupes.locaux %}<li>{{ nom }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% if groupes.systeme %}
+    <h3>Identités système</h3>
+    <p class="note petit">Attribuées par Windows à toute connexion de ce type (Tout le monde, Utilisateurs authentifiés…).</p>
+    <ul class="groupes">{% for nom in groupes.systeme %}<li>{{ nom }}</li>{% endfor %}</ul>
+    {% endif %}
   </section>
 
   {% if groupes.refus_seulement %}

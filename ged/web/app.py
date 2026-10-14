@@ -156,7 +156,11 @@ def creer_app(
     def vue_groupes(lecteur: Lecteur):
         """Groupes de la personne, en arbre quand l'annuaire répond."""
         disponible = bool(lecteur.sid) and annuaire.disponible
-        return organiser_groupes(lecteur, annuaire.parents, nom_compte, disponible, prefixe_machine())
+        # Tous ses groupes lus d'un coup (quelques recherches groupées, puis gardés en mémoire)
+        graphe = annuaire.graphe(lecteur.sids_refus | {lecteur.sid}) if disponible else {}
+        return organiser_groupes(
+            lecteur, lambda sid: graphe.get(sid, []), nom_compte, disponible, prefixe_machine()
+        )
     templates.env.globals["exemples_recherche"] = cfg.exemples_recherche
     pool = ConnectionPool(cfg.url_base, kwargs={"row_factory": dict_row}, min_size=1, max_size=10, open=False)
 

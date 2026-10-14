@@ -29,13 +29,29 @@ log = logging.getLogger(__name__)
 _PAS_DES_GROUPES = ("S-1-5-5-", "S-1-16-")
 
 
+@dataclass
+class Noeud:
+    """Un compte ou un groupe tel que lu dans l'annuaire."""
+    dn: str | None                       # None : SID absent de l'annuaire (groupe local, autre domaine)
+    parents_dn: list[str] = field(default_factory=list)   # memberOf
+    principal: str | None = None         # SID du groupe principal (comptes seulement)
+    expire: float = 0.0
+
+
 class AnnuaireAD:
-    """Groupes parents d'un compte ou d'un groupe, lus par LDAP (ADSI), gardés en mémoire une heure."""
+    """Groupes parents des comptes et groupes, lus dans l'annuaire par recherches LDAP groupées.
+
+    Une seule recherche pour un lot de SID ramène, pour chacun, son nom LDAP (DN), ses groupes
+    parents (memberOf, des DN) et son groupe principal. Tous les groupes d'une personne étant
+    cherchés ensemble, leurs DN suffisent à traduire les parents en SID, sans autre appel. Les
+    résultats sont gardés en mémoire une heure.
+    """
+
+    TAILLE_LOT = 100   # SID par recherche (filtre LDAP de taille raisonnable)
 
     def __init__(self, duree_cache_s: float = 3600):
         self.duree_cache_s = duree_cache_s
-        self._parents: dict[str, tuple[float, list[str]]] = {}
-        self._sid_des_dn: dict[str, str] = {}
+        self._noeuds: dict[str, Noeud] = {}
 
     @cached_property
     def disponible(self) -> bool:
@@ -43,65 +59,94 @@ class AnnuaireAD:
         if sys.platform != "win32":
             return False
         try:
-            self._objet("LDAP://RootDSE")
+            self._contexte_de_nommage
             return True
         except Exception as exc:  # com_error : domaine introuvable
             log.info("Pas d'annuaire Active Directory joignable : %s", exc)
             return False
 
-    def parents(self, sid: str) -> list[str]:
-        """SID des groupes dont `sid` (compte ou groupe) est membre direct, groupe principal compris."""
+    def graphe(self, sids: set[str] | frozenset[str]) -> dict[str, list[str]]:
+        """Pour chaque SID connu de l'annuaire, les SID de ses groupes parents directs parmi `sids`
+        (groupe principal compris)."""
         if not self.disponible:
-            return []
+            return {}
         maintenant = time.monotonic()
-        en_cache = self._parents.get(sid)
-        if en_cache and en_cache[0] > maintenant:
-            return en_cache[1]
-        try:
-            parents = self._lire_parents(sid)
-        except Exception as exc:  # objet introuvable, annuaire injoignable
-            log.warning("Groupes parents de %s illisibles : %s", sid, exc)
-            parents = []
-        self._parents[sid] = (maintenant + self.duree_cache_s, parents)
-        return parents
+        # Seuls les SID d'un domaine peuvent être dans l'annuaire (pas Tout le monde, BUILTIN...)
+        candidats = {s for s in sids if s.startswith("S-1-5-21-")}
+        manquants = sorted(s for s in candidats if s not in self._noeuds or self._noeuds[s].expire < maintenant)
+        if manquants:
+            debut = time.perf_counter()
+            for i in range(0, len(manquants), self.TAILLE_LOT):
+                lot = manquants[i:i + self.TAILLE_LOT]
+                try:
+                    trouves = {e["sid"]: e for e in self._rechercher(lot)}
+                except Exception as exc:  # annuaire injoignable en cours de route
+                    log.warning("Lecture de l'annuaire impossible : %s", exc)
+                    trouves = {}
+                for sid in lot:
+                    e = trouves.get(sid)
+                    self._noeuds[sid] = Noeud(
+                        dn=e["dn"] if e else None,
+                        parents_dn=list(e.get("member_of") or []) if e else [],
+                        principal=f"{sid.rsplit('-', 1)[0]}-{e['primary_group_id']}" if e and e.get("primary_group_id") else None,
+                        expire=maintenant + self.duree_cache_s,
+                    )
+            log.info("Annuaire : %d comptes et groupes lus en %.1f s", len(manquants), time.perf_counter() - debut)
 
-    def _lire_parents(self, sid: str) -> list[str]:
-        objet = self._objet(f"LDAP://<SID={sid}>")
-        try:
-            noms_distinctifs = list(objet.GetEx("memberOf"))
-        except Exception:  # attribut vide : ADSI lève une erreur plutôt que de renvoyer une liste vide
-            noms_distinctifs = []
-        parents = [s for s in (self._sid_du_dn(dn) for dn in noms_distinctifs) if s]
-        try:
-            # Groupe principal : même domaine que le compte, numéro dans primaryGroupID
-            primaire = f"{sid.rsplit('-', 1)[0]}-{int(objet.Get('primaryGroupID'))}"
-            if primaire not in parents:
-                parents.append(primaire)
-        except Exception:  # un groupe n'a pas de groupe principal
-            pass
-        return parents
+        sid_du_dn = {self._noeuds[s].dn.lower(): s for s in candidats if self._noeuds[s].dn}
+        graphe = {}
+        for sid in candidats:
+            noeud = self._noeuds[sid]
+            parents = [sid_du_dn[dn.lower()] for dn in noeud.parents_dn if dn.lower() in sid_du_dn]
+            if noeud.principal and noeud.principal not in parents:
+                parents.append(noeud.principal)
+            graphe[sid] = parents
+        return graphe
 
-    def _sid_du_dn(self, dn: str) -> str | None:
-        if dn not in self._sid_des_dn:
-            import pywintypes
-            import win32security
-
-            try:
-                brut = self._objet("LDAP://" + dn.replace("/", "\\/")).Get("objectSid")
-                self._sid_des_dn[dn] = win32security.ConvertSidToStringSid(pywintypes.SID(bytes(brut)))
-            except Exception as exc:
-                log.warning("Groupe %s illisible : %s", dn, exc)
-                return None
-        return self._sid_des_dn[dn]
-
-    @staticmethod
-    def _objet(chemin: str):
+    def _rechercher(self, sids: list[str]) -> list[dict]:
+        """Recherche LDAP (ADSI) des objets de ces SID : [{"sid", "dn", "member_of", "primary_group_id"}]."""
         import pythoncom
+        import pywintypes
         import win32com.client
+        import win32security
 
         # Les pages sont servies par plusieurs fils d'exécution : COM s'initialise dans chacun
         pythoncom.CoInitialize()
-        return win32com.client.GetObject(chemin)
+        filtre = "(|" + "".join(f"(objectSid={sid})" for sid in sids) + ")"
+        connexion = win32com.client.Dispatch("ADODB.Connection")
+        connexion.Provider = "ADsDSOObject"
+        connexion.Open("Active Directory Provider")
+        try:
+            commande = win32com.client.Dispatch("ADODB.Command")
+            commande.ActiveConnection = connexion
+            commande.Properties("Page Size").Value = 500
+            commande.CommandText = (
+                f"<LDAP://{self._contexte_de_nommage}>;{filtre};"
+                "objectSid,distinguishedName,memberOf,primaryGroupID;subtree"
+            )
+            resultats, _ = commande.Execute()
+            entrees = []
+            while not resultats.EOF:
+                champ = resultats.Fields
+                entrees.append({
+                    "sid": win32security.ConvertSidToStringSid(pywintypes.SID(bytes(champ("objectSid").Value))),
+                    "dn": champ("distinguishedName").Value,
+                    "member_of": champ("memberOf").Value or (),
+                    "primary_group_id": champ("primaryGroupID").Value,
+                })
+                resultats.MoveNext()
+            return entrees
+        finally:
+            connexion.Close()
+
+    @cached_property
+    def _contexte_de_nommage(self) -> str:
+        """Racine du domaine dans l'annuaire (« DC=oc-sante,DC=fr »)."""
+        import pythoncom
+        import win32com.client
+
+        pythoncom.CoInitialize()
+        return win32com.client.GetObject("LDAP://RootDSE").Get("defaultNamingContext")
 
 
 @lru_cache(maxsize=1)

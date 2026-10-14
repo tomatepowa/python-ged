@@ -99,4 +99,75 @@ def test_annuaire_reel_sans_erreur():
     """Sur un poste du domaine, l'annuaire répond ; ailleurs, aucun parent, sans exception."""
     annuaire = AnnuaireAD()
     if not annuaire.disponible:
-        assert annuaire.parents("S-1-5-21-1-2-3-1001") == []
+        assert annuaire.graphe({"S-1-5-21-1-2-3-1001"}) == {}
+
+
+# --- Lecture groupée de l'annuaire (recherche LDAP simulée) ------------------------------------
+
+def dn(nom):
+    return f"CN={nom},OU=Groupes,DC=cliniques,DC=fr"
+
+
+# Ce que renverrait l'annuaire pour chaque SID
+OBJETS = {
+    MOI: {"dn": "CN=Cosson Antoine,OU=DSI,DC=cliniques,DC=fr",
+          "member_of": (dn("DSI-Infra"), dn("Diffusion DSI")), "primary_group_id": 513},
+    DSI_INFRA: {"dn": dn("DSI-Infra"), "member_of": (dn("DSI"),), "primary_group_id": None},
+    # Casse différente dans memberOf : les DN se comparent sans tenir compte de la casse
+    DSI: {"dn": dn("DSI"), "member_of": ("cn=GED-Lecture,ou=Groupes,dc=cliniques,dc=fr",), "primary_group_id": None},
+    GED_LECTURE: {"dn": dn("GED-Lecture"), "member_of": None, "primary_group_id": None},
+    UTILISATEURS_DOMAINE: {"dn": dn("Utilisateurs du domaine"), "member_of": None, "primary_group_id": None},
+}
+
+
+class AnnuaireSimule(AnnuaireAD):
+    disponible = True
+    TAILLE_LOT = 2
+
+    def __init__(self, panne=False):
+        super().__init__()
+        self.recherches = []
+        self.panne = panne
+
+    def _rechercher(self, sids):
+        self.recherches.append(list(sids))
+        if self.panne:
+            raise OSError("contrôleur de domaine injoignable")
+        return [{"sid": s, **OBJETS[s]} for s in sids if s in OBJETS]
+
+
+def test_graphe_par_recherches_groupees():
+    annuaire = AnnuaireSimule()
+    graphe = annuaire.graphe(LECTEUR.sids_refus | {LECTEUR.sid})
+    # Parents traduits en SID grâce aux DN de la même lecture ; liste de diffusion (hors jeton)
+    # ignorée ; groupe principal (513) ajouté
+    assert graphe[MOI] == [DSI_INFRA, UTILISATEURS_DOMAINE]
+    assert graphe[DSI_INFRA] == [DSI]
+    assert graphe[DSI] == [GED_LECTURE]
+    # Groupe du domaine absent de l'annuaire : sans parents ; ni Tout le monde ni BUILTIN cherchés
+    assert graphe[HORS_ARBRE] == []
+    cherches = [s for lot in annuaire.recherches for s in lot]
+    assert TOUT_LE_MONDE not in cherches and BUILTIN_UTILISATEURS not in cherches
+    # Par lots de TAILLE_LOT SID, une seule fois chacun
+    assert all(len(lot) <= 2 for lot in annuaire.recherches)
+    assert len(cherches) == len(set(cherches))
+
+
+def test_graphe_garde_en_memoire():
+    annuaire = AnnuaireSimule()
+    sids = LECTEUR.sids_refus | {LECTEUR.sid}
+    premier = annuaire.graphe(sids)
+    nombre = len(annuaire.recherches)
+    assert annuaire.graphe(sids) == premier
+    assert len(annuaire.recherches) == nombre    # rien n'est relu
+    # Une fois le délai passé, tout est relu
+    for noeud in annuaire._noeuds.values():
+        noeud.expire = 0
+    annuaire.graphe(sids)
+    assert len(annuaire.recherches) == 2 * nombre
+
+
+def test_graphe_annuaire_en_panne():
+    annuaire = AnnuaireSimule(panne=True)
+    graphe = annuaire.graphe({MOI, DSI_INFRA})
+    assert graphe == {MOI: [], DSI_INFRA: []}

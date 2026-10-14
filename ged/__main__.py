@@ -60,9 +60,11 @@ def main(argv: list[str] | None = None) -> None:
         print("Schéma à jour.")
 
     elif args.commande == "indexer":
-        from ged.db import connecter
+        from ged.db import connecter, initialiser
         from ged.indexeur import Indexeur
 
+        # Schéma idempotent : une mise à jour du code qui ajoute des colonnes n'oblige pas à penser à init-db
+        initialiser(cfg.url_base)
         with connecter(cfg.url_base) as conn:
             bilan = Indexeur(cfg, conn).indexer(forcer=args.forcer, noms_sources=args.source)
         _afficher_bilan("Indexation terminée", bilan)
@@ -117,9 +119,13 @@ def main(argv: list[str] | None = None) -> None:
     elif args.commande == "serveur":
         import uvicorn
 
+        from ged.db import initialiser
         from ged.web.app import creer_app
 
-        print(f"Interface disponible sur http://{cfg.hote}:{cfg.port}")
+        initialiser(cfg.url_base)
+        # localhost plutôt que 127.0.0.1 : le navigateur n'y envoie la session Windows que sous ce nom
+        hote = "localhost" if cfg.hote in ("127.0.0.1", "0.0.0.0") else cfg.hote
+        print(f"Interface disponible sur http://{hote}:{cfg.port}")
         uvicorn.run(creer_app(cfg), host=cfg.hote, port=cfg.port)
 
 

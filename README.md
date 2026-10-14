@@ -224,7 +224,7 @@ groupes_admin = ['CLINIQUES\GED-Admins']   # voient tous les documents et l'éta
 duree_session_heures = 8
 ```
 
-**Identification** : à la première visite, le serveur demande au navigateur de s'identifier ; Edge et Chrome envoient alors la session Windows ouverte, sans rien demander, si l'adresse de la GED est dans la zone « Intranet local » (c'est le cas d'un nom court comme `http://vm-ged:8000` ; pour un nom complet ou une adresse IP, l'ajouter par GPO : *Liste des attributions de sites aux zones*). Windows vérifie l'identité auprès du contrôleur de domaine et fournit la liste complète des groupes de la personne, groupes imbriqués compris. Un cookie de session évite ensuite de recommencer à chaque page ; un changement de groupe est pris en compte à la session suivante (après `duree_session_heures`, ou un redémarrage du serveur). Le compte connecté s'affiche à droite du bandeau.
+**Identification** : à la première visite, le serveur demande au navigateur de s'identifier ; Edge et Chrome envoient alors la session Windows ouverte, sans rien demander, si l'adresse de la GED est dans la zone « Intranet local » (c'est le cas d'un nom court comme `http://vm-ged:8000` ; pour un nom complet ou une adresse IP, l'ajouter par GPO : *Liste des attributions de sites aux zones*). **Firefox** ne le fait que pour les sites autorisés : `about:config` › `network.automatic-ntlm-auth.trusted-uris` = `vm-ged` (ou `localhost` sur le poste du serveur), ou, pour tout un parc, la stratégie Firefox *Authentication* › `NTLM` (`SPNEGO` pour Kerberos) ; sinon il demande identifiant et mot de passe. Windows vérifie l'identité auprès du contrôleur de domaine et fournit la liste complète des groupes de la personne, groupes imbriqués compris. Un cookie de session évite ensuite de recommencer à chaque page ; un changement de groupe est pris en compte à la session suivante (après `duree_session_heures`, ou un redémarrage du serveur). Le compte connecté s'affiche à droite du bandeau.
 
 **NTLM ou Kerberos** : NTLM fonctionne quel que soit le compte qui fait tourner le serveur. Kerberos (`Negotiate`) est plus sûr, mais il exige que ce compte porte le SPN `HTTP/<nom du serveur>` : serveur lancé en service sous le compte machine (*Service réseau*), ou SPN déclaré par un administrateur du domaine (`setspn -S HTTP/vm-ged CLINIQUES\svc-ged`). Sinon le navigateur obtient un ticket que le serveur ne sait pas lire et l'identification échoue.
 
@@ -234,7 +234,7 @@ duree_session_heures = 8
 
 **Limites** : les droits sont ceux de la dernière indexation (une modification de droits est prise en compte au passage suivant de `ged indexer`) ; les entrées de droits conditionnelles (contrôle d'accès dynamique) sont ignorées ; la correction orthographique s'appuie sur le vocabulaire de tous les documents, mais ne propose que des mots présents dans des documents visibles.
 
-> **Mise à jour d'une installation existante** : lancer `ged init-db` (nouvelles colonnes), puis `ged indexer` : les fichiers inchangés ne sont pas relus, seuls leurs droits sont mis à jour. D'ici là, les documents n'ont pas encore de droits enregistrés et restent masqués, sauf aux administrateurs de la GED.
+> **Mise à jour d'une installation existante** : `ged serveur` et `ged indexer` mettent le schéma à jour au démarrage ; lancer `ged indexer` : les fichiers inchangés ne sont pas relus, seuls leurs droits sont mis à jour. D'ici là, les documents n'ont pas encore de droits enregistrés et restent masqués, sauf aux administrateurs de la GED.
 
 ## Utilisation
 

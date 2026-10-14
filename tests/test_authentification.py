@@ -54,8 +54,8 @@ def test_sans_identification_le_navigateur_est_invite_a_s_identifier(client):
     "adresse, conseil",
     [
         # Une adresse à points est en zone Internet : le navigateur demande un mot de passe
-        ("http://127.0.0.1:8000/", "http://localhost:8000/"),
         ("http://vm-ged.cliniques.local:8000/", "nom court du serveur"),
+        ("http://10.1.2.3:8000/", "nom court du serveur"),
         ("http://vm-ged:8000/", None),
     ],
 )
@@ -65,6 +65,12 @@ def test_page_d_identification_explique_les_adresses_a_points(client, adresse, c
         assert conseil in texte
     else:
         assert "contient des points" not in texte
+
+
+def test_127_0_0_1_redirige_vers_localhost(client):
+    reponse = client.get("http://127.0.0.1:8000/?q=vpn", follow_redirects=False)
+    assert reponse.status_code == 307
+    assert reponse.headers["location"] == "http://localhost:8000/?q=vpn"
 
 
 def test_fichiers_statiques_sans_identification(client):

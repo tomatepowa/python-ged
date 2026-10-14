@@ -26,6 +26,8 @@
       {% endif %}
       <ul>
         <li>Utilisez Edge ou Chrome, sur un poste connecté au domaine (ou au VPN).</li>
+        <li>Firefox n'envoie la session Windows qu'aux sites autorisés : dans <code>about:config</code>, ajoutez
+          <strong>{{ request.url.hostname }}</strong> à <code>network.automatic-ntlm-auth.trusted-uris</code>.</li>
         <li>Si une fenêtre vous a demandé un identifiant, saisissez votre compte Windows habituel.</li>
         <li>Si cette page revient, l'adresse de la GED doit être ajoutée aux sites « Intranet local »
           (Options Internet › Sécurité) : demandez-le à la DSI.</li>

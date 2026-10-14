@@ -149,6 +149,10 @@ def creer_app(cfg: configuration.Config | None = None, negociateur: Negociateur 
 
             jeton = auth.jeton_recu(request.headers.get("authorization", ""))
             if jeton is None:
+                # 127.0.0.1 est classé en zone Internet : le navigateur y demanderait un mot de
+                # passe au lieu d'envoyer la session Windows, contrairement à localhost
+                if request.url.hostname in ("127.0.0.1", "::1"):
+                    return RedirectResponse(str(request.url.replace(hostname="localhost")), status_code=307)
                 return refus_authentification(request, auth.entete_reponse())
             client = request.client
             # NTLM : les deux allers-retours de la négociation passent par la même connexion

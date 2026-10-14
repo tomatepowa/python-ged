@@ -33,12 +33,20 @@ from ged.acces import Lecteur
 log = logging.getLogger(__name__)
 
 COOKIE = "ged_session"
+# Ce navigateur a déjà su s'identifier : on négocie directement, sans page d'accueil
+COOKIE_NAVIGATEUR = "ged_navigateur"
 # Une négociation NTLM abandonnée (onglet fermé entre les deux allers-retours) est oubliée après
 DUREE_NEGOCIATION_S = 60
 
 # Attributs des groupes d'un jeton Windows (winnt.h)
 SE_GROUP_ENABLED = 0x4
 SE_GROUP_USE_FOR_DENY_ONLY = 0x10
+
+
+def identification_sur_demande(agent: str) -> bool:
+    """Navigateur qui n'envoie la session Windows qu'aux sites qu'on lui a explicitement indiqués
+    (Firefox : network.automatic-ntlm-auth.trusted-uris) et demande sinon un mot de passe."""
+    return "firefox/" in agent.lower()
 
 
 class AuthentificationRefusee(Exception):

@@ -8,7 +8,7 @@ from importlib.resources import files
 
 import pytest
 
-from ged.acces import TOUT, Lecteur, filtre_acces, peut_lire
+from ged.acces import TOUT, Lecteur, diagnostic_acces, filtre_acces, peut_lire
 from ged.droits import ECRITURE, GENERIC_READ, LECTURE, MODIFICATION, acces_lecture
 
 INFRA = "S-1-5-21-1-2-3-1101"
@@ -158,3 +158,24 @@ def test_filtre_sql_des_documents(base_de_test):
     assert visibles(lecteur(INFRA)) == {"infra"}
     admin = Lecteur("CLINIQUE\\dsi", frozenset(), frozenset(), admin=True)
     assert visibles(admin) == set(documents)
+
+
+def test_diagnostic_quand_aucun_document_n_est_visible(base_de_test):
+    conn = base_de_test
+    conn.execute("TRUNCATE document_tag, document, tag, vocabulaire, source RESTART IDENTITY CASCADE")
+    assert diagnostic_acces(conn) == "index_vide"
+
+    source = conn.execute("INSERT INTO source (nom, chemin, pole) VALUES ('Infra', 'x', 'Infra') RETURNING id").fetchone()["id"]
+
+    def ajouter(nom, sids):
+        conn.execute(
+            "INSERT INTO document (source_id, chemin, chemin_relatif, nom, extension, famille, taille, "
+            "modifie_le, statut, acces_sids) VALUES (%s, %s, %s, %s, '.txt', 'Texte', 1, now(), 'indexe', %s)",
+            (source, nom, nom, nom, sids),
+        )
+
+    # Indexé avant la mise en place du filtrage : droits pas encore enregistrés
+    ajouter("ancien", None)
+    assert diagnostic_acces(conn) == "droits_absents"
+    ajouter("recent", [INFRA])
+    assert diagnostic_acces(conn) == "aucun_droit"

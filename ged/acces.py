@@ -69,3 +69,20 @@ def filtre_acces(conn: psycopg.Connection, lecteur: Lecteur) -> FiltreAcces:
         "AND (d.acces_ordre IS NULL OR ged_peut_lire(d.acces_ordre, %(acces_sids)s::text[], %(acces_refus)s::text[])))",
         {"acces_sources": sources, "acces_sids": sorted(lecteur.sids), "acces_refus": sorted(lecteur.sids_refus)},
     )
+
+
+def diagnostic_acces(conn: psycopg.Connection) -> str:
+    """Pourquoi une personne ne voit aucun document.
+
+    "index_vide" : rien n'est indexé ; "droits_absents" : les droits des fichiers n'ont pas encore
+    été enregistrés (première indexation depuis la mise en place du filtrage) ; "aucun_droit" :
+    ses droits Windows ne lui permettent de lire aucun document indexé.
+    """
+    comptes = conn.execute(
+        "SELECT count(*) AS total, count(acces_sids) AS avec_droits FROM document WHERE supprime_le IS NULL"
+    ).fetchone()
+    if not comptes["total"]:
+        return "index_vide"
+    if not comptes["avec_droits"]:
+        return "droits_absents"
+    return "aucun_droit"

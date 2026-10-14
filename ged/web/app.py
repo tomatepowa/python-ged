@@ -7,6 +7,7 @@ import mimetypes
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import urlencode
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
@@ -16,11 +17,12 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from ged import config as configuration
-from ged.acces import FiltreAcces, Lecteur, filtre_acces
+from ged.acces import FiltreAcces, Lecteur, diagnostic_acces, filtre_acces
 from ged.arborescence import construire_arbre_resultats, dossier_parent, fil_ariane
 from ged.recherche import DOCUMENTS_ARBRE_MAX, PAR_PAGE, Filtres, facettes, rechercher, statistiques, suggerer
 from ged.web.authentification import (
-    COOKIE, Authentification, AuthentificationRefusee, Negociateur, NegociateurSSPI, sids_des_comptes,
+    COOKIE, COOKIE_NAVIGATEUR, Authentification, AuthentificationRefusee, Negociateur, NegociateurSSPI,
+    identification_sur_demande, sids_des_comptes,
 )
 
 log = logging.getLogger(__name__)
@@ -104,11 +106,23 @@ def libelle_du_dossier(conn, filtres: Filtres) -> str | None:
     return " › ".join(filter(None, [source["nom"] if source else "?", *cible[1].split("\\")]))
 
 
-def refus_authentification(request: Request, entete: str) -> HTMLResponse:
-    """Réponse 401 : le navigateur s'identifie aussitôt avec la session Windows (sites intranet).
-    La page ne s'affiche que s'il ne le fait pas."""
+def refus_authentification(request: Request, entete: str | None) -> HTMLResponse:
+    """Réponse 401 avec la page d'accueil de l'identification.
+
+    Avec `entete` (WWW-Authenticate), le navigateur s'identifie aussitôt avec la session Windows
+    (sites intranet) et la page ne s'affiche que s'il ne le fait pas. Sans, la page s'affiche
+    d'abord : elle explique le réglage à faire avant que le navigateur ne demande un mot de passe.
+    """
+    suite = request.url.path + (f"?{request.url.query}" if request.url.query else "")
     return templates.TemplateResponse(
-        request, "identification.html", {}, status_code=401, headers={"WWW-Authenticate": entete}
+        request,
+        "identification.html",
+        {
+            "firefox": identification_sur_demande(request.headers.get("user-agent", "")),
+            "lien_connexion": "/connexion?" + urlencode({"suite": suite if request.url.path != "/connexion" else "/"}),
+        },
+        status_code=401,
+        headers={"WWW-Authenticate": entete} if entete else None,
     )
 
 
@@ -153,6 +167,12 @@ def creer_app(cfg: configuration.Config | None = None, negociateur: Negociateur 
                 # passe au lieu d'envoyer la session Windows, contrairement à localhost
                 if request.url.hostname in ("127.0.0.1", "::1"):
                     return RedirectResponse(str(request.url.replace(hostname="localhost")), status_code=307)
+                # Firefox demanderait un mot de passe faute de réglage : la page d'accueil l'explique
+                # d'abord, et son bouton « Se connecter » (/connexion) lance l'identification. Une fois
+                # qu'il a su s'identifier, un cookie permet de négocier directement les fois suivantes.
+                if (request.url.path != "/connexion" and request.cookies.get(COOKIE_NAVIGATEUR) != "1"
+                        and identification_sur_demande(request.headers.get("user-agent", ""))):
+                    return refus_authentification(request, None)
                 return refus_authentification(request, auth.entete_reponse())
             client = request.client
             # NTLM : les deux allers-retours de la négociation passent par la même connexion
@@ -171,6 +191,7 @@ def creer_app(cfg: configuration.Config | None = None, negociateur: Negociateur 
             if sortant:  # Kerberos : jeton d'authentification mutuelle
                 reponse.headers["WWW-Authenticate"] = auth.entete_reponse(sortant)
             reponse.set_cookie(COOKIE, auth.ouvrir_session(lecteur), httponly=True, samesite="lax")
+            reponse.set_cookie(COOKIE_NAVIGATEUR, "1", max_age=365 * 24 * 3600, httponly=True, samesite="lax")
             return reponse
     else:
         @app.middleware("http")
@@ -215,14 +236,24 @@ def creer_app(cfg: configuration.Config | None = None, negociateur: Negociateur 
             filtre = acces(request, conn)
             contexte = contexte_resultats(filtres, conn, filtre)
             choix = facettes(conn, filtre)
+            # Aucun document visible : dire pourquoi, plutôt qu'une recherche qui ne trouve jamais rien
+            alerte_acces = None if any(p["nb"] for p in choix["poles"]) else diagnostic_acces(conn)
         tags_par_categorie: dict[str, list[dict]] = {}
         for t in choix["tags"]:
             tags_par_categorie.setdefault(t["categorie"], []).append(t)
         return templates.TemplateResponse(
             request,
             "recherche.html",
-            {**contexte, "choix": choix, "tags_par_categorie": tags_par_categorie},
+            {**contexte, "choix": choix, "tags_par_categorie": tags_par_categorie, "alerte_acces": alerte_acces},
         )
+
+    @app.get("/connexion")
+    def connexion(suite: str = "/"):
+        """Bouton « Se connecter » de la page d'accueil : une fois identifié, retour à la page demandée."""
+        # Seulement une page de la GED (pas de redirection vers un autre site)
+        if not suite.startswith("/") or suite.startswith("//") or "\\" in suite:
+            suite = "/"
+        return RedirectResponse(suite, status_code=303)
 
     @app.get("/resultats", response_class=HTMLResponse)
     def resultats_seuls(request: Request, filtres: Annotated[Filtres, Depends(lire_filtres)]):

@@ -496,3 +496,14 @@ a.badge.tag:hover { outline: 1px solid var(--tag-texte); }
 
 /* Compte Windows de la personne connectée, à droite du bandeau */
 .bandeau .compte { margin-left: auto; color: var(--texte-doux); font-size: .85rem; }
+
+/* Page d'accueil de l'identification */
+.accueil-identification { max-width: 760px; margin: 0 auto; }
+.accueil-identification .encart { margin: 1.25rem 0; padding: .9rem 1.1rem; border: 1px solid var(--bordure); border-radius: 8px; background: var(--fond); }
+.accueil-identification .encart h2 { margin: 0 0 .5rem; font-size: 1.1rem; }
+.accueil-identification li { margin: .3rem 0; }
+.accueil-identification code { padding: 0 .3rem; border-radius: 4px; background: var(--badge); font-size: .9em; }
+
+/* Aucun document visible : pourquoi */
+.alerte-acces { margin-bottom: 1rem; }
+.alerte-acces strong { display: block; margin-bottom: .2rem; }

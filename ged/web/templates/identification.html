@@ -3,36 +3,57 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Identification – GED DSI</title>
+  <title>Bienvenue – GED DSI</title>
   <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}?v={{ version_statique }}">
 </head>
 <body>
-  {# Affichée seulement si le navigateur ne s'est pas identifié avec la session Windows #}
+  {# Page d'accueil de l'identification : affichée à Firefox avant toute demande de mot de passe,
+     et aux autres navigateurs quand ils ne se sont pas identifiés tout seuls #}
   <header class="bandeau"><span class="logo">GED <span>DSI</span></span></header>
   <main>
-    <div class="fiche">
-      <h1>Identification Windows nécessaire</h1>
-      <p>La GED affiche les documents selon vos droits sur les partages réseau : elle a besoin de savoir
-        qui vous êtes. Votre navigateur aurait dû s'identifier automatiquement avec votre session Windows.</p>
+    <div class="fiche accueil-identification">
+      <h1>Bienvenue sur la GED DSI</h1>
+      <p>La GED vous montre les documents que vos droits Windows vous permettent d'ouvrir sur les partages
+        réseau. Pour cela, elle vous reconnaît grâce à votre session Windows : <strong>vous n'avez aucun mot de
+        passe à saisir</strong>, si votre navigateur est réglé pour le faire.</p>
+
       {% set hote = request.url.hostname or "" %}
-      {% if "." in hote or ":" in hote %}
-      {# Une adresse IP ou un nom complet est classé en zone Internet : pas d'identification automatique #}
-      <p class="avertissement">L'adresse <strong>{{ hote }}</strong> contient des points : le navigateur la considère
-        comme un site Internet et n'y envoie pas votre session Windows (il demande un identifiant et un mot de passe).
-        {% if hote in ("127.0.0.1", "::1") %}Sur ce poste, utilisez plutôt
-        <a href="{{ request.url.replace(hostname='localhost') }}">{{ request.url.replace(hostname='localhost') }}</a>.
-        {% else %}Utilisez le nom court du serveur (sans le domaine), ou faites ajouter cette adresse aux sites « Intranet local ».{% endif %}
-      </p>
+      {% if firefox %}
+      <section class="encart">
+        <h2>Vous utilisez Firefox</h2>
+        <p>Firefox ne transmet votre session Windows qu'aux sites qu'on lui a indiqués. Sans ce réglage, il
+          affiche une fenêtre « Ce site vous demande de vous connecter ». À faire une seule fois :</p>
+        <ol>
+          <li>Ouvrez un nouvel onglet et tapez <code>about:config</code>, puis acceptez l'avertissement.</li>
+          <li>Recherchez <code>network.automatic-ntlm-auth.trusted-uris</code> et cliquez sur le crayon.</li>
+          <li>Saisissez <code>{{ hote }}</code> (s'il y a déjà une valeur, ajoutez <code>,{{ hote }}</code> à la fin)
+            et validez.</li>
+          <li>Revenez ici et cliquez sur <strong>Se connecter</strong>.</li>
+        </ol>
+        <p class="note">Sans ce réglage, Firefox vous demandera votre identifiant Windows
+          (<code>DOMAINE\identifiant</code>) et votre mot de passe : cela fonctionne aussi. Edge et Chrome
+          n'ont besoin d'aucun réglage.</p>
+      </section>
+      {% else %}
+      <section class="encart">
+        <h2>Votre navigateur ne s'est pas identifié</h2>
+        {% if "." in hote or ":" in hote %}
+        {# Une adresse IP ou un nom complet est classé en zone Internet : pas d'identification automatique #}
+        <p class="avertissement">L'adresse <strong>{{ hote }}</strong> contient des points : le navigateur la
+          considère comme un site Internet et n'y envoie pas votre session Windows. Utilisez le nom court du
+          serveur (sans le domaine), ou faites ajouter cette adresse aux sites « Intranet local ».</p>
+        {% endif %}
+        <ul>
+          <li>Utilisez Edge ou Chrome, sur un poste connecté au domaine (ou au VPN).</li>
+          <li>Si une fenêtre vous a demandé un identifiant, saisissez votre compte Windows habituel
+            (<code>DOMAINE\identifiant</code>).</li>
+          <li>Si cette page revient, l'adresse de la GED doit être ajoutée aux sites « Intranet local »
+            (Options Internet › Sécurité) : demandez-le à la DSI.</li>
+        </ul>
+      </section>
       {% endif %}
-      <ul>
-        <li>Utilisez Edge ou Chrome, sur un poste connecté au domaine (ou au VPN).</li>
-        <li>Firefox n'envoie la session Windows qu'aux sites autorisés : dans <code>about:config</code>, ajoutez
-          <strong>{{ request.url.hostname }}</strong> à <code>network.automatic-ntlm-auth.trusted-uris</code>.</li>
-        <li>Si une fenêtre vous a demandé un identifiant, saisissez votre compte Windows habituel.</li>
-        <li>Si cette page revient, l'adresse de la GED doit être ajoutée aux sites « Intranet local »
-          (Options Internet › Sécurité) : demandez-le à la DSI.</li>
-      </ul>
-      <p><a class="bouton" href="/">Réessayer</a></p>
+
+      <p><a class="bouton" href="{{ lien_connexion }}">Se connecter</a></p>
     </div>
   </main>
 </body>

@@ -47,15 +47,15 @@ def test_sans_identification_le_navigateur_est_invite_a_s_identifier(client):
     reponse = client.get("/")
     assert reponse.status_code == 401
     assert reponse.headers["WWW-Authenticate"] == "NTLM"
-    assert "Identification Windows" in reponse.text
+    assert "ne s'est pas identifié" in reponse.text
 
 
 @pytest.mark.parametrize(
     "adresse, conseil",
     [
         # Une adresse à points est en zone Internet : le navigateur demande un mot de passe
-        ("http://vm-ged.cliniques.local:8000/", "nom court du serveur"),
-        ("http://10.1.2.3:8000/", "nom court du serveur"),
+        ("http://vm-ged.cliniques.local:8000/", "contient des points"),
+        ("http://10.1.2.3:8000/", "contient des points"),
         ("http://vm-ged:8000/", None),
     ],
 )
@@ -65,6 +65,39 @@ def test_page_d_identification_explique_les_adresses_a_points(client, adresse, c
         assert conseil in texte
     else:
         assert "contient des points" not in texte
+
+
+FIREFOX = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"}
+
+
+def test_firefox_voit_d_abord_la_page_d_accueil_sans_fenetre_de_mot_de_passe(client):
+    reponse = client.get("/?q=vpn", headers=FIREFOX)
+    assert reponse.status_code == 401
+    # Sans WWW-Authenticate, Firefox n'ouvre pas sa fenêtre « Ce site vous demande de vous connecter »
+    assert "WWW-Authenticate" not in reponse.headers
+    assert "network.automatic-ntlm-auth.trusted-uris" in reponse.text
+    assert "/connexion?suite=%2F%3Fq%3Dvpn" in reponse.text
+
+
+def test_firefox_se_connecte_par_le_bouton_puis_negocie_directement(client):
+    # Le bouton « Se connecter » lance la négociation
+    assert client.get("/connexion?suite=/stats", headers=FIREFOX).headers["WWW-Authenticate"] == "NTLM"
+    client.get("/connexion?suite=/stats", headers={**FIREFOX, **ntlm(b"negociation")})
+    reponse = client.get("/connexion?suite=/stats", headers={**FIREFOX, **ntlm(b"reponse")}, follow_redirects=False)
+    assert reponse.status_code == 303
+    assert reponse.headers["location"] == "/stats"
+    assert reponse.cookies.get("ged_navigateur") == "1"
+
+    # Session expirée : ce navigateur sait s'identifier, plus de page d'accueil
+    client.cookies.delete(COOKIE)
+    assert client.get("/", headers=FIREFOX).headers["WWW-Authenticate"] == "NTLM"
+
+
+@pytest.mark.parametrize("suite", ["//exemple.com/piege", "https://exemple.com", "/\\exemple.com"])
+def test_connexion_ne_renvoie_que_vers_la_ged(client, suite):
+    client.get("/connexion", headers=ntlm(b"negociation"))
+    reponse = client.get("/connexion", params={"suite": suite}, headers=ntlm(b"reponse"), follow_redirects=False)
+    assert reponse.headers["location"] == "/"
 
 
 def test_127_0_0_1_redirige_vers_localhost(client):

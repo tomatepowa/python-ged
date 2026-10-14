@@ -2,6 +2,26 @@
 {% block titre %}{% if filtres.q %}{{ filtres.q }} – {% endif %}GED DSI{% endblock %}
 
 {% block contenu %}
+{# Aucun document visible : on dit pourquoi, sinon chaque recherche paraît simplement vide #}
+{% if alerte_acces == "aucun_droit" %}
+<div class="avertissement alerte-acces" role="alert">
+  <strong>Vous n'avez accès à aucun document.</strong>
+  La GED n'affiche que les fichiers que vos droits Windows vous permettent d'ouvrir, et votre compte
+  {% if request.state.lecteur.compte %}<code>{{ request.state.lecteur.compte }}</code>{% endif %} n'a le droit de lire
+  aucun des documents indexés. Si vous devriez y avoir accès, demandez à la DSI de vous ajouter au groupe
+  qui a accès aux partages concernés (la modification compte à votre prochaine connexion).
+</div>
+{% elif alerte_acces == "droits_absents" %}
+<div class="avertissement alerte-acces" role="alert">
+  <strong>Les documents ne sont pas encore accessibles.</strong>
+  Les droits d'accès des fichiers n'ont pas encore été enregistrés : ils le seront à la prochaine indexation.
+  D'ici là, seuls les administrateurs de la GED voient les documents.
+</div>
+{% elif alerte_acces == "index_vide" %}
+<div class="avertissement alerte-acces" role="alert">
+  <strong>L'index est vide.</strong> Aucun document n'a encore été indexé.
+</div>
+{% endif %}
 <form class="recherche" id="recherche" method="get" action="/">
   <div class="barre">
     <div class="champ">

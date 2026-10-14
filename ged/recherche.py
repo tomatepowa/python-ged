@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import date
 from functools import partial
-from itertools import islice, product
+from itertools import islice, permutations, product
 from urllib.parse import urlencode
 
 import psycopg
@@ -43,6 +43,10 @@ class Filtres:
     vue: str = "arbre"
     # Ordre de la vue liste : "" (pertinence), "recent" ou "ancien"
     tri: str = ""
+    # Documents d'une personne : ses noms (« Antoine Cosson », « acosson », « DOMAINE\acosson »)
+    # et son rôle : "auteur", "modificateur", "proprietaire" ou "" (l'un des trois)
+    personnes: list[str] = field(default_factory=list)
+    role: str = ""
     page: int = 1
 
     def lien(self, page: int | None = None) -> str:
@@ -50,8 +54,10 @@ class Filtres:
         parametres = [
             ("q", self.q), ("pole", self.pole), ("famille", self.famille), ("dossier", self.dossier),
             ("du", self.du), ("au", self.au), ("vue", "liste" if self.vue == "liste" else ""), ("tri", self.tri),
+            ("role", self.role if self.personnes else ""),
         ]
         parametres += [("tag", t) for t in self.tags]
+        parametres += [("personne", nom) for nom in self.personnes]
         if (page or self.page) > 1:
             parametres.append(("page", page or self.page))
         return urlencode([(k, v) for k, v in parametres if v not in ("", None)])
@@ -256,6 +262,9 @@ def _executer(
         )
         parametres["tags"] = filtres.tags
         parametres["nb_tags"] = len(set(filtres.tags))
+    if filtres.personnes:
+        conditions.append(condition_personne(filtres.role))
+        parametres.update(parametres_personne(filtres.personnes))
     if cible := filtres.dossier_cible():
         conditions.append("d.source_id = %(dossier_source)s AND starts_with(d.chemin_relatif, %(dossier_prefixe)s)")
         parametres["dossier_source"] = cible[0]
@@ -464,3 +473,54 @@ def statistiques(conn: psycopg.Connection) -> dict:
             "WHERE statut = 'erreur' AND supprime_le IS NULL ORDER BY chemin_relatif LIMIT 100"
         ).fetchall(),
     }
+
+
+# Nom de personne comparable : minuscules, sans accents, ponctuation remplacée par des espaces
+_NOM_SQL = "trim(regexp_replace(ged_normaliser(coalesce({}, '')), '[^a-z0-9]+', ' ', 'g'))"
+
+
+def variantes_nom(*noms: str) -> list[str]:
+    """Formes comparables de noms de personne, dans tous les ordres de mots : les propriétés
+    Office donnent « Antoine Cosson », « COSSON Antoine » ou « Cosson, Antoine »."""
+    variantes = set()
+    for nom in noms:
+        mots = re.sub(r"[^a-z0-9]+", " ", normaliser(nom or "")).split()
+        if 0 < len(mots) <= 4:
+            variantes.update(" ".join(ordre) for ordre in permutations(mots))
+    return sorted(variantes)
+
+
+# Rôles d'une personne vis-à-vis d'un document, et leur libellé (filtre « personne »)
+ROLES = {"auteur": "Créé par", "modificateur": "Modifié en dernier par", "proprietaire": "Propriétaire"}
+_CONDITIONS_ROLE = {
+    # Propriétés Office / PDF : un nom en texte libre, comparé dans tous les ordres de mots
+    "auteur": f"{_NOM_SQL.format('d.auteur')} = ANY(%(personne_noms)s)",
+    "modificateur": f"{_NOM_SQL.format('d.dernier_modificateur')} = ANY(%(personne_noms)s)",
+    # Propriétaire du fichier : un compte Windows « DOMAINE\identifiant »
+    "proprietaire": "lower(d.proprietaire) = ANY(%(personne_comptes)s)",
+}
+
+
+def condition_personne(role: str) -> str:
+    """Condition SQL « document de cette personne » pour un rôle ("" : l'un des trois)."""
+    if role in _CONDITIONS_ROLE:
+        return _CONDITIONS_ROLE[role]
+    return "(" + " OR ".join(_CONDITIONS_ROLE.values()) + ")"
+
+
+def parametres_personne(personnes: list[str]) -> dict:
+    return {
+        "personne_noms": variantes_nom(*personnes),
+        "personne_comptes": [nom.strip().lower() for nom in personnes if nom.strip()],
+    }
+
+
+def mes_documents(conn: psycopg.Connection, acces: FiltreAcces, personnes: list[str]) -> dict:
+    """Nombre de documents visibles dont la personne est l'auteur, le dernier modificateur ou le
+    propriétaire : la même règle que le filtre « personne », pour que chaque nombre corresponde
+    à la recherche sur laquelle il mène."""
+    colonnes = ", ".join(f"count(*) FILTER (WHERE {sql}) AS {role}" for role, sql in _CONDITIONS_ROLE.items())
+    return conn.execute(
+        f"SELECT {colonnes} FROM document d WHERE d.supprime_le IS NULL AND {acces.sql}",
+        {**parametres_personne(personnes), **acces.parametres},
+    ).fetchone()

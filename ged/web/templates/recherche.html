@@ -42,6 +42,11 @@
   {# Période de modification choisie sur la frise : "2020" ou "2020-03", bornes incluses #}
   <input type="hidden" name="du" value="{{ filtres.du }}">
   <input type="hidden" name="au" value="{{ filtres.au }}">
+  {# Documents d'une personne (clic sur un nom) : ses noms et son rôle #}
+  <div id="filtre-personne" hidden>
+    {% for nom in filtres.personnes %}<input type="hidden" name="personne" value="{{ nom }}">{% endfor %}
+    <input type="hidden" name="role" value="{{ filtres.role if filtres.personnes }}">
+  </div>
   {# Frise des dates, dessinée par recherche.js d'après les comptes par mois des résultats #}
   <div class="frise" id="frise" hidden></div>
 

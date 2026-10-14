@@ -31,7 +31,8 @@
     {% if d.statut == "sans_texte" %}<span class="badge">Image sans texte</span>{% endif %}
     {# Chemin entre les badges et la date : il se réduit en « … » s'il manque de place #}
     <span class="fil-chemin" title="{{ d.chemin_relatif }}">📁{% if not d.chemin_decoupe.debut %} racine{% endif %}{{ segments(d.chemin_decoupe.debut, "debut", d.source_id) }}{{ segments(d.chemin_decoupe.milieu, "milieu", d.source_id) }}{{ segments(d.chemin_decoupe.fin, "fin", d.source_id) }}</span>
-    <span class="date">modifié le {{ d.modifie_le | date }}{% if d.dernier_modificateur or d.auteur %} par {{ d.dernier_modificateur or d.auteur }}{% endif %}</span>
+    {% set role = "modificateur" if d.dernier_modificateur else "auteur" %}
+    <span class="date">modifié le {{ d.modifie_le | date }}{% if d.dernier_modificateur or d.auteur %} par <a class="personne" href="{{ lien_personne(d.dernier_modificateur or d.auteur, role) }}" data-personne="{{ d.dernier_modificateur or d.auteur }}" data-role="{{ role }}" title="Documents {{ 'modifiés en dernier' if role == 'modificateur' else 'créés' }} par {{ d.dernier_modificateur or d.auteur }}">{{ d.dernier_modificateur or d.auteur }}</a>{% endif %}</span>
   </div>
   {% if d.extrait %}<p class="extrait">{{ d.extrait }}</p>{% endif %}
 </article>

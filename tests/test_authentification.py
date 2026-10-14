@@ -162,7 +162,18 @@ def test_vraie_negociation_ntlm_avec_la_session_courante():
     assert COOKIE in reponse.cookies
 
 
-def test_page_de_mes_groupes(client):
+def test_page_de_mes_groupes(client, monkeypatch):
+    # Sans base : connexion factice, compte des documents simulé (testé sur base dans test_acces)
+    from contextlib import nullcontext
+
+    import ged.web.app as app
+
+    monkeypatch.setattr(app.ConnectionPool, "connection", lambda self: nullcontext(None))
+    monkeypatch.setattr(app, "filtre_acces", lambda conn, lecteur: None)
+    appels = []
+    monkeypatch.setattr(app, "mes_documents", lambda conn, acces, personnes: appels.append(personnes)
+                        or {"auteur": 12, "modificateur": 7, "proprietaire": 3})
+
     client.get("/moi", headers=ntlm(b"negociation"))
     reponse = client.get("/moi", headers=ntlm(b"reponse"))
     assert reponse.status_code == 200
@@ -171,3 +182,7 @@ def test_page_de_mes_groupes(client):
     assert "S-1-5-21-1-2-3-1101" in reponse.text
     # Le nom du bandeau mène à cette page
     assert 'href="/moi"' in reponse.text
+    # Documents comptés sous l'identifiant du compte (pas de nom complet ici)
+    assert appels == [["tech"]]
+    # Chaque nombre mène aux documents correspondants
+    assert '<a href="/?vue=liste&amp;tri=recent&amp;role=auteur&amp;personne=tech"><span class="chiffre">12</span> créés par vous' in reponse.text

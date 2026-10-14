@@ -48,11 +48,11 @@
     <section>
       <h2>Personnes et dates</h2>
       <dl class="proprietes">
-        <dt>Créé par</dt><dd>{{ doc.auteur or "—" }}</dd>
+        <dt>Créé par</dt><dd>{% if doc.auteur %}<a href="{{ lien_personne(doc.auteur, 'auteur') }}" title="Tous les documents créés par {{ doc.auteur }}">{{ doc.auteur }}</a>{% else %}—{% endif %}</dd>
         <dt>Créé le</dt><dd>{{ doc.cree_le | date if doc.cree_le else "—" }}</dd>
-        <dt>Modifié par</dt><dd>{{ doc.dernier_modificateur or "—" }}</dd>
+        <dt>Modifié par</dt><dd>{% if doc.dernier_modificateur %}<a href="{{ lien_personne(doc.dernier_modificateur, 'modificateur') }}" title="Tous les documents modifiés en dernier par {{ doc.dernier_modificateur }}">{{ doc.dernier_modificateur }}</a>{% else %}—{% endif %}</dd>
         <dt>Modifié le</dt><dd>{{ doc.modifie_le | date }}</dd>
-        <dt>Propriétaire</dt><dd>{{ doc.proprietaire or "—" }}</dd>
+        <dt>Propriétaire</dt><dd>{% if doc.proprietaire %}<a href="{{ lien_personne(doc.proprietaire, 'proprietaire') }}" title="Tous les fichiers dont {{ doc.proprietaire }} est propriétaire">{{ doc.proprietaire }}</a>{% else %}—{% endif %}</dd>
       </dl>
       <p class="note petit">
         « Créé par » et « Modifié par » viennent des propriétés du document (Word, Excel, PowerPoint, PDF) :

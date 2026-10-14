@@ -14,6 +14,20 @@
     {% if lecteur.admin %}<br><strong>Administrateur de la GED</strong> : vous voyez tous les documents, et l'état de l'index.{% endif %}
   </p>
 
+  {% if documents %}
+  <section>
+    <h2>Vos documents</h2>
+    <div class="mes-documents">
+      <a href="{{ lien_personne(personnes, 'auteur') }}"><span class="chiffre">{{ documents.auteur }}</span> créés par vous</a>
+      <a href="{{ lien_personne(personnes, 'modificateur') }}"><span class="chiffre">{{ documents.modificateur }}</span> modifiés en dernier par vous</a>
+      <a href="{{ lien_personne(personnes, 'proprietaire') }}"><span class="chiffre">{{ documents.proprietaire }}</span> dont vous êtes propriétaire</a>
+    </div>
+    <p class="note petit">Auteur et dernier modificateur : propriétés des documents (Word, Excel, PowerPoint, PDF),
+      comparées à votre nom{% if lecteur.nom_affiche %} « {{ lecteur.nom_affiche }} »{% endif %}, dans n'importe quel ordre.
+      Propriétaire : propriétaire du fichier sur le partage. Seuls les documents que vous pouvez voir sont comptés.</p>
+  </section>
+  {% endif %}
+
   <section>
     <h2>Vos groupes ({{ groupes.actifs | length }})</h2>
     <ul class="groupes">

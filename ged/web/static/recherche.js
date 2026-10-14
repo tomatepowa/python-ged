@@ -501,6 +501,7 @@
       if (quoi === 'pole' || quoi === 'tout') formulaire.elements.pole.value = '';
       if (quoi === 'famille' || quoi === 'tout') formulaire.elements.famille.value = '';
       if (quoi === 'dossier' || quoi === 'tout') formulaire.elements.dossier.value = '';
+      if (quoi === 'personne' || quoi === 'tout') filtrerPersonne([], '');
       if (quoi === 'date' || quoi === 'tout') {
         formulaire.elements.du.value = '';
         formulaire.elements.au.value = '';
@@ -514,6 +515,15 @@
       chercher(new URLSearchParams(page.search), true);
       return;
     }
+    // Clic sur un nom (auteur, dernier modificateur) : les documents de cette personne
+    const personne = e.target.closest('a[data-personne]');
+    if (personne) {
+      e.preventDefault();
+      champ.value = '';
+      filtrerPersonne([personne.dataset.personne], personne.dataset.role);
+      chercher(parametres(), true);
+      return;
+    }
     // Clic sur un tag d'un résultat : tous les documents portant ce tag (sans recharger la page)
     const tag = e.target.closest('a[data-tag]');
     const caseTag = tag && formulaire.querySelector(`input[name=tag][value="${tag.dataset.tag}"]`);
@@ -525,10 +535,23 @@
     }
   });
 
+  // Filtre « documents d'une personne » : champs cachés personne (un par nom) et role
+  function filtrerPersonne(noms, role) {
+    const bloc = document.getElementById('filtre-personne');
+    bloc.querySelectorAll('input[name=personne]').forEach((c) => c.remove());
+    noms.forEach((nom) => {
+      const c = element('input');
+      Object.assign(c, { type: 'hidden', name: 'personne', value: nom });
+      bloc.prepend(c);
+    });
+    formulaire.elements.role.value = noms.length ? role : '';
+  }
+
   document.getElementById('effacer-filtres').addEventListener('click', () => {
     formulaire.querySelectorAll('select').forEach((s) => { s.value = ''; });
     formulaire.querySelectorAll('input[type=checkbox]').forEach((c) => { c.checked = false; });
     formulaire.elements.dossier.value = '';
+    filtrerPersonne([], '');
     formulaire.elements.du.value = '';
     formulaire.elements.au.value = '';
     chercher();

@@ -206,3 +206,57 @@ def test_groupes_du_lecteur():
         "actifs": [r"CLINIQUE\DSI-Infra", r"CLINIQUE\Utilisateurs du domaine"],
         "refus_seulement": [r"BUILTIN\Administrateurs"],
     }
+
+
+def test_variantes_nom():
+    from ged.recherche import variantes_nom
+
+    assert variantes_nom("Antoine Cosson", "acosson", "") == ["acosson", "antoine cosson", "cosson antoine"]
+    # Accents, majuscules et ponctuation ignorés
+    assert "helene dupre" in variantes_nom("DUPRÉ, Hélène")
+
+
+def test_mes_documents_et_filtre_personne(base_de_test):
+    from ged.recherche import Filtres, mes_documents, rechercher
+
+    conn = base_de_test
+    conn.execute("TRUNCATE document_tag, document, tag, vocabulaire, source RESTART IDENTITY CASCADE")
+    source = conn.execute("INSERT INTO source (nom, chemin, pole) VALUES ('Infra', 'x', 'Infra') RETURNING id").fetchone()["id"]
+    moi = "CLINIQUE" + chr(92) + "acosson"
+    for nom, auteur, modificateur, proprietaire, sids in [
+        ("a", "Antoine Cosson", "Hélène Dupré", "CLINIQUE" + chr(92) + "hdupre", [UTILISATEURS]),
+        ("b", "COSSON Antoine", "Cosson, Antoine", moi, [UTILISATEURS]),
+        ("c", "Hélène Dupré", "acosson", moi.upper(), [UTILISATEURS]),
+        # Écrit par moi, mais je ne peux plus le lire : pas compté
+        ("d", "Antoine Cosson", None, moi, [INFRA]),
+    ]:
+        conn.execute(
+            "INSERT INTO document (source_id, chemin, chemin_relatif, nom, extension, famille, taille, modifie_le, "
+            "statut, auteur, dernier_modificateur, proprietaire, acces_sids) "
+            "VALUES (%s, %s, %s, %s, '.docx', 'Word', 1, now(), 'indexe', %s, %s, %s, %s)",
+            (source, nom, nom, nom, auteur, modificateur, proprietaire, sids),
+        )
+    filtre = filtre_acces(conn, lecteur(UTILISATEURS))
+    personnes = ["Antoine Cosson", "acosson", moi]
+    assert mes_documents(conn, filtre, personnes) == {"auteur": 2, "modificateur": 2, "proprietaire": 2}
+
+    # Le filtre « personne » de la recherche retrouve exactement les documents comptés
+    def trouves(role, noms=personnes):
+        r = rechercher(conn, Filtres(personnes=noms, role=role, vue="liste"), filtre)
+        return sorted(d["nom"] for d in r.documents)
+
+    assert trouves("auteur") == ["a", "b"]
+    assert trouves("modificateur") == ["b", "c"]
+    assert trouves("proprietaire") == ["b", "c"]
+    assert trouves("") == ["a", "b", "c"]
+    # Depuis une fiche : un seul nom, tel qu'écrit dans le document
+    assert trouves("auteur", ["Hélène Dupré"]) == ["c"]
+
+
+def test_lien_du_filtre_personne():
+    from ged.recherche import Filtres
+
+    lien = Filtres(personnes=["Antoine Cosson", "acosson"], role="auteur", vue="liste").lien()
+    assert lien == "vue=liste&role=auteur&personne=Antoine+Cosson&personne=acosson"
+    # Sans personne, pas de rôle orphelin dans l'adresse
+    assert Filtres(role="auteur").lien() == ""

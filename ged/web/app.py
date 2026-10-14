@@ -20,7 +20,9 @@ from ged import config as configuration
 from ged.acces import FiltreAcces, Lecteur, diagnostic_acces, filtre_acces, groupes_du_lecteur, sids_accordant
 from ged.arborescence import construire_arbre_resultats, dossier_parent, fil_ariane
 from ged.droits import nom_compte
-from ged.recherche import DOCUMENTS_ARBRE_MAX, PAR_PAGE, Filtres, facettes, rechercher, statistiques, suggerer
+from ged.recherche import (
+    DOCUMENTS_ARBRE_MAX, PAR_PAGE, ROLES, Filtres, facettes, mes_documents, rechercher, statistiques, suggerer,
+)
 from ged.web.authentification import (
     COOKIE, COOKIE_NAVIGATEUR, Authentification, AuthentificationRefusee, Negociateur, NegociateurSSPI,
     identification_sur_demande, sids_des_comptes,
@@ -53,6 +55,17 @@ def lien_dossier(source_id: int, chemin: str = "") -> str:
 
 
 templates.env.globals["lien_dossier"] = lien_dossier
+
+
+def lien_personne(noms: str | list[str], role: str = "") -> str:
+    """Accueil avec les documents d'une personne (auteur, dernier modificateur, propriétaire),
+    les plus récents d'abord."""
+    noms = [noms] if isinstance(noms, str) else [n for n in noms if n]
+    return "/?" + Filtres(personnes=noms, role=role, vue="liste", tri="recent").lien()
+
+
+templates.env.globals["lien_personne"] = lien_personne
+templates.env.globals["roles"] = ROLES
 templates.env.globals["fil_ariane"] = fil_ariane
 templates.env.filters["date"] = lambda d: d.astimezone().strftime("%d/%m/%Y") if d else ""
 
@@ -87,6 +100,8 @@ def lire_filtres(
     au: str = "",
     vue: str = "",
     tri: str = "",
+    personne: Annotated[list[str], Query()] = [],
+    role: str = "",
     page: int = 1,
 ) -> Filtres:
     """Filtres de recherche lus dans l'URL (communs à la page complète et au fragment de résultats)."""
@@ -94,6 +109,8 @@ def lire_filtres(
         q=q, pole=pole, famille=famille, tags=tag, dossier=dossier, du=du, au=au,
         vue="liste" if vue == "liste" else "arbre",
         tri=tri if tri in ("recent", "ancien") else "",
+        personnes=[nom.strip()[:200] for nom in personne if nom.strip()][:5],
+        role=role if role in ROLES else "",
         page=max(page, 1),
     )
 
@@ -311,8 +328,21 @@ def creer_app(cfg: configuration.Config | None = None, negociateur: Negociateur 
     def moi(request: Request):
         """Compte Windows de la personne connectée et ses groupes (ceux qui comptent pour ses droits)."""
         lecteur: Lecteur = request.state.lecteur
+        documents, personnes = None, []
+        if lecteur.compte:
+            # Nom complet, identifiant seul (« acosson », certains postes signent ainsi les documents)
+            # et compte Windows (propriétaire des fichiers)
+            identifiant = lecteur.compte.split("\\")[-1].split("@")[0]
+            personnes = [nom for nom in (lecteur.nom_affiche, identifiant, lecteur.sid and nom_compte(lecteur.sid)) if nom]
+            with pool.connection() as conn:
+                documents = mes_documents(conn, acces(request, conn), personnes)
         return templates.TemplateResponse(
-            request, "moi.html", {"lecteur": lecteur, "groupes": groupes_du_lecteur(lecteur, nom_compte)}
+            request,
+            "moi.html",
+            {
+                "lecteur": lecteur, "groupes": groupes_du_lecteur(lecteur, nom_compte),
+                "documents": documents, "personnes": personnes,
+            },
         )
 
     @app.get("/dossiers")

@@ -3,7 +3,7 @@
    quand la case responsable est hors de l'écran. #}
 {% set cible = filtres.dossier_cible() %}
 {% set periode = libelle_periode(filtres) %}
-{% set nb_filtres = (tags_actifs | length) + (1 if filtres.pole else 0) + (1 if filtres.famille else 0) + (1 if cible else 0) + (1 if periode else 0) %}
+{% set nb_filtres = (tags_actifs | length) + (1 if filtres.personnes else 0) + (1 if filtres.pole else 0) + (1 if filtres.famille else 0) + (1 if cible else 0) + (1 if periode else 0) %}
 {% if nb_filtres %}
 <div class="filtres-actifs">
   <span class="note">Filtres :</span>
@@ -26,6 +26,7 @@
       <button type="button" data-retirer="dossier" title="Chercher dans tous les dossiers">✕</button>
     </span>
   {% endif %}
+  {% if filtres.personnes %}<button type="button" class="pastille personne" data-retirer="personne" title="Documents de cette personne – retirer ce filtre">👤 {{ roles.get(filtres.role, "Personne") }} : {{ filtres.personnes[0] }} ✕</button>{% endif %}
   {% if periode %}<button type="button" class="pastille" data-retirer="date" title="Modifiés pendant cette période – retirer ce filtre">📅 {{ periode }} ✕</button>{% endif %}
   {% if filtres.pole %}<button type="button" class="pastille" data-retirer="pole">Pôle : {{ filtres.pole }} ✕</button>{% endif %}
   {% if filtres.famille %}<button type="button" class="pastille" data-retirer="famille">Type : {{ filtres.famille }} ✕</button>{% endif %}

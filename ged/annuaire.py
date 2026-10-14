@@ -35,6 +35,7 @@ class Noeud:
     dn: str | None                       # None : SID absent de l'annuaire (groupe local, autre domaine)
     parents_dn: list[str] = field(default_factory=list)   # memberOf
     principal: str | None = None         # SID du groupe principal (comptes seulement)
+    nom_affiche: str | None = None       # displayName (« Antoine Cosson »)
     expire: float = 0.0
 
 
@@ -89,6 +90,7 @@ class AnnuaireAD:
                         dn=e["dn"] if e else None,
                         parents_dn=list(e.get("member_of") or []) if e else [],
                         principal=f"{sid.rsplit('-', 1)[0]}-{e['primary_group_id']}" if e and e.get("primary_group_id") else None,
+                        nom_affiche=e.get("display_name") if e else None,
                         expire=maintenant + self.duree_cache_s,
                     )
             log.info("Annuaire : %d comptes et groupes lus en %.1f s", len(manquants), time.perf_counter() - debut)
@@ -103,8 +105,18 @@ class AnnuaireAD:
             graphe[sid] = parents
         return graphe
 
+    def nom_affiche(self, sid: str) -> str | None:
+        """Nom complet du compte (displayName), lu avec le compte du serveur : contrairement à
+        l'identité de la personne obtenue par NTLM, il peut interroger le contrôleur de domaine."""
+        if not self.disponible or not sid.startswith("S-1-5-21-"):
+            return None
+        self.graphe({sid})   # lit le compte s'il n'est pas déjà en mémoire
+        noeud = self._noeuds.get(sid)
+        return noeud.nom_affiche if noeud else None
+
     def _rechercher(self, sids: list[str]) -> list[dict]:
-        """Recherche LDAP (ADSI) des objets de ces SID : [{"sid", "dn", "member_of", "primary_group_id"}]."""
+        """Recherche LDAP (ADSI) des objets de ces SID :
+        [{"sid", "dn", "member_of", "primary_group_id", "display_name"}]."""
         import pythoncom
         import pywintypes
         import win32com.client
@@ -122,7 +134,7 @@ class AnnuaireAD:
             commande.Properties("Page Size").Value = 500
             commande.CommandText = (
                 f"<LDAP://{self._contexte_de_nommage}>;{filtre};"
-                "objectSid,distinguishedName,memberOf,primaryGroupID;subtree"
+                "objectSid,distinguishedName,memberOf,primaryGroupID,displayName;subtree"
             )
             resultats, _ = commande.Execute()
             entrees = []
@@ -133,6 +145,7 @@ class AnnuaireAD:
                     "dn": champ("distinguishedName").Value,
                     "member_of": champ("memberOf").Value or (),
                     "primary_group_id": champ("primaryGroupID").Value,
+                    "display_name": champ("displayName").Value,
                 })
                 resultats.MoveNext()
             return entrees
@@ -162,6 +175,20 @@ def prefixe_machine() -> str:
         return win32security.ConvertSidToStringSid(sid)
     except pywintypes.error:
         return ""
+
+
+def nom_complet_local(compte: str) -> str | None:
+    """Nom complet d'un compte local du serveur (« POSTE\\dell » -> « Antoine Cosson »), None sinon."""
+    domaine, _, identifiant = compte.rpartition("\\")
+    if sys.platform != "win32" or domaine.upper() != os.environ.get("COMPUTERNAME", "").upper():
+        return None
+    import pywintypes
+    import win32net
+
+    try:
+        return win32net.NetUserGetInfo(None, identifiant, 2)["full_name"] or None
+    except pywintypes.error:
+        return None
 
 
 def categorie(sid: str, machine: str) -> str:

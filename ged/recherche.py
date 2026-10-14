@@ -360,6 +360,7 @@ def _executer(
 
 COMPLETIONS_MAX = 6
 DOCUMENTS_SUGGERES_MAX = 6
+PERSONNES_SUGGEREES_MAX = 3
 
 
 def suggerer(conn: psycopg.Connection, q: str, acces: FiltreAcces) -> dict:
@@ -412,7 +413,9 @@ def suggerer(conn: psycopg.Connection, q: str, acces: FiltreAcces) -> dict:
     for doc in documents:
         decoupe = decouper_chemin(fil_ariane(dossier_parent(doc.pop("chemin_relatif"))))
         doc["chemin"] = {partie: [nom for nom, _ in niveaux] for partie, niveaux in decoupe.items()}
-    return {"completions": completions, "documents": documents}
+    # Personnes : à partir de 3 lettres, pour ne pas proposer tout l'annuaire dès la première
+    personnes = chercher_personnes(conn, q, acces, PERSONNES_SUGGEREES_MAX) if len(q.strip()) >= 3 else []
+    return {"completions": completions, "documents": documents, "personnes": personnes}
 
 
 def decouper_chemin(niveaux: list[tuple[str, str]]) -> dict[str, list[tuple[str, str]]]:
@@ -481,11 +484,18 @@ _NOM_SQL = "trim(regexp_replace(ged_normaliser(coalesce({}, '')), '[^a-z0-9]+', 
 
 def variantes_nom(*noms: str) -> list[str]:
     """Formes comparables de noms de personne, dans tous les ordres de mots : les propriétés
-    Office donnent « Antoine Cosson », « COSSON Antoine » ou « Cosson, Antoine »."""
+    Office donnent « Antoine Cosson », « COSSON Antoine » ou « Cosson, Antoine ».
+
+    Au-delà de 4 mots (une adresse « a.cosson@oc-sante.fr » en fait 5), seul l'ordre d'origine
+    est gardé : le nombre d'ordres possibles exploserait.
+    """
     variantes = set()
     for nom in noms:
         mots = re.sub(r"[^a-z0-9]+", " ", normaliser(nom or "")).split()
-        if 0 < len(mots) <= 4:
+        if not mots:
+            continue
+        variantes.add(" ".join(mots))
+        if len(mots) <= 4:
             variantes.update(" ".join(ordre) for ordre in permutations(mots))
     return sorted(variantes)
 
@@ -524,3 +534,37 @@ def mes_documents(conn: psycopg.Connection, acces: FiltreAcces, personnes: list[
         f"SELECT {colonnes} FROM document d WHERE d.supprime_le IS NULL AND {acces.sql}",
         {**parametres_personne(personnes), **acces.parametres},
     ).fetchone()
+
+
+def chercher_personnes(conn: psycopg.Connection, q: str, acces: FiltreAcces, limite: int = 8) -> list[dict]:
+    """Personnes (auteur, dernier modificateur ou propriétaire de documents visibles) dont le nom
+    contient tous les mots tapés : [{"nom", "nb"}], les plus actives d'abord.
+
+    « Antoine Cosson » et « COSSON Antoine » ne font qu'une personne (mêmes mots dans un autre
+    ordre), présentée sous sa graphie la plus fréquente ; un compte Windows (propriétaire) reste
+    une entrée à part. Le filtre « personne » (rôle quelconque) retrouve ensuite ses documents.
+    """
+    mots = re.sub(r"[^a-z0-9]+", " ", normaliser(q)).split()
+    if not mots:
+        return []
+    return conn.execute(
+        f"""
+        WITH noms AS (
+            SELECT d.id, n.nom, {_NOM_SQL.format("n.nom")} AS norme
+            FROM document d
+            CROSS JOIN LATERAL (VALUES (d.auteur), (d.dernier_modificateur), (d.proprietaire)) AS n(nom)
+            WHERE d.supprime_le IS NULL AND {acces.sql} AND coalesce(n.nom, '') <> ''
+        ), cles AS (
+            SELECT id, nom, array_to_string(
+                ARRAY(SELECT m FROM unnest(string_to_array(norme, ' ')) AS m ORDER BY m), ' ') AS cle
+            FROM noms
+            WHERE norme LIKE ALL (%(motifs)s)
+        )
+        SELECT mode() WITHIN GROUP (ORDER BY nom) AS nom, count(DISTINCT id) AS nb
+        FROM cles
+        GROUP BY cle
+        ORDER BY nb DESC, nom
+        LIMIT %(limite)s
+        """,
+        {"motifs": [f"%{m}%" for m in mots], "limite": limite, **acces.parametres},
+    ).fetchall()

@@ -68,6 +68,12 @@
           {% endfor %}
         </select>
       </label>
+      {# Documents d'une personne, quel que soit son rôle : propositions pendant la frappe (/personnes) #}
+      <label>Personne
+        <input type="search" id="champ-personne" list="liste-personnes" autocomplete="off" spellcheck="false"
+               placeholder="Auteur, modificateur, propriétaire…" value="{{ filtres.personnes[0] if filtres.personnes }}">
+        <datalist id="liste-personnes"></datalist>
+      </label>
       {% for categorie, tags in tags_par_categorie.items() %}
       <fieldset>
         <legend>{{ categorie | capitalize }}</legend>

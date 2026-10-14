@@ -18,11 +18,12 @@ from psycopg_pool import ConnectionPool
 
 from ged import config as configuration
 from ged.acces import FiltreAcces, Lecteur, diagnostic_acces, filtre_acces, sids_accordant
-from ged.annuaire import AnnuaireAD, organiser_groupes, prefixe_machine
+from ged.annuaire import AnnuaireAD, nom_complet_local, organiser_groupes, prefixe_machine
 from ged.arborescence import construire_arbre_resultats, dossier_parent, fil_ariane
 from ged.droits import nom_compte
 from ged.recherche import (
-    DOCUMENTS_ARBRE_MAX, PAR_PAGE, ROLES, Filtres, facettes, mes_documents, rechercher, statistiques, suggerer,
+    DOCUMENTS_ARBRE_MAX, PAR_PAGE, ROLES, Filtres, chercher_personnes, facettes, mes_documents, rechercher,
+    statistiques, suggerer,
 )
 from ged.web.authentification import (
     COOKIE, COOKIE_NAVIGATEUR, Authentification, AuthentificationRefusee, Negociateur, NegociateurSSPI,
@@ -300,6 +301,12 @@ def creer_app(
         with pool.connection() as conn:
             return suggerer(conn, q[:200], acces(request, conn))
 
+    @app.get("/personnes")
+    def personnes(request: Request, q: str = ""):
+        """Personnes dont le nom contient les mots tapés, pour le champ « Personne » des filtres (JSON)."""
+        with pool.connection() as conn:
+            return chercher_personnes(conn, q[:100], acces(request, conn))
+
     @app.get("/document/{document_id}", response_class=HTMLResponse)
     def detail(request: Request, document_id: int):
         with pool.connection() as conn:
@@ -345,12 +352,21 @@ def creer_app(
     def moi(request: Request):
         """Compte Windows de la personne connectée et ses groupes (ceux qui comptent pour ses droits)."""
         lecteur: Lecteur = request.state.lecteur
-        documents, personnes = None, []
+        documents, personnes, nom_affiche = None, [], ""
         if lecteur.compte:
             # Nom complet, identifiant seul (« acosson », certains postes signent ainsi les documents)
             # et compte Windows (propriétaire des fichiers)
             identifiant = lecteur.compte.split("\\")[-1].split("@")[0]
-            personnes = [nom for nom in (lecteur.nom_affiche, identifiant, lecteur.sid and nom_compte(lecteur.sid)) if nom]
+            # Nom complet lu par le serveur avec son propre compte (annuaire, ou base locale pour un
+            # compte local) : l'identité de la personne obtenue par NTLM ne permet pas d'interroger
+            # le contrôleur de domaine depuis le serveur (pas de « second saut »)
+            compte = lecteur.sid and nom_compte(lecteur.sid)
+            nom_affiche = (
+                (lecteur.sid and annuaire.disponible and annuaire.nom_affiche(lecteur.sid))
+                or (compte and nom_complet_local(compte))
+                or ""
+            )
+            personnes = [nom for nom in (nom_affiche, identifiant, compte) if nom]
             with pool.connection() as conn:
                 documents = mes_documents(conn, acces(request, conn), personnes)
         return templates.TemplateResponse(
@@ -358,7 +374,7 @@ def creer_app(
             "moi.html",
             {
                 "lecteur": lecteur, "groupes": vue_groupes(lecteur),
-                "documents": documents, "personnes": personnes,
+                "documents": documents, "personnes": personnes, "nom_affiche": nom_affiche,
             },
         )
 

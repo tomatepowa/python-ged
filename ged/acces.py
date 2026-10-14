@@ -25,10 +25,8 @@ class Lecteur:
     # ... et, pour les refus, s'y ajoutent les groupes « refus seulement » de son jeton Windows
     sids_refus: frozenset[str]
     admin: bool = False
-    # SID du compte lui-même (propriétaire des fichiers) et nom complet (« Antoine Cosson »,
-    # auteur dans les propriétés Office)
+    # SID du compte lui-même (propriétaire des fichiers, nom complet dans l'annuaire)
     sid: str = ""
-    nom_affiche: str = ""
 
     @classmethod
     def sans_filtre(cls) -> "Lecteur":

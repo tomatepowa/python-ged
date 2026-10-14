@@ -125,24 +125,7 @@ class NegociateurSSPI:
             sids_refus=frozenset(tous),
             admin=bool(self.sids_admin & actifs),
             sid=utilisateur,
-            nom_affiche=self._nom_affiche(contexte),
         )
-
-    @staticmethod
-    def _nom_affiche(contexte) -> str:
-        """Nom complet de la personne (annuaire du domaine, ou compte local), lu en empruntant
-        son identité le temps de l'appel. Vide s'il est introuvable."""
-        import pywintypes
-        import win32api
-        import win32con
-
-        contexte.ctxt.ImpersonateSecurityContext()
-        try:
-            return win32api.GetUserNameEx(win32con.NameDisplay)
-        except pywintypes.error:
-            return ""
-        finally:
-            contexte.ctxt.RevertSecurityContext()
 
 
 def sids_des_comptes(noms: list[str]) -> frozenset[str]:

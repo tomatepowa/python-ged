@@ -349,6 +349,13 @@
       window.location = '/document/' + choix.id;
       return;
     }
+    if (choix.type === 'personne') {
+      // Les mots tapés servaient à trouver la personne : place à ses documents
+      champ.value = '';
+      filtrerPersonne([choix.nom], '');
+      chercher(parametres(), true);
+      return;
+    }
     champ.value = choix.texte + ' ';
     champ.focus();
     chercher();
@@ -369,7 +376,7 @@
     }
 
     if (donnees.documents.length) {
-      elements.push(null); // séparateur, retiré plus bas
+      elements.push({ titre: 'Documents' }); // intertitre, retiré de la navigation plus bas
       for (const d of donnees.documents) {
         const noeud = element('div', 'suggestion document');
         noeud.append(element('span', 'badge', d.famille), element('span', 'nom', d.nom), filChemin(d.chemin));
@@ -377,9 +384,21 @@
       }
     }
 
+    // Personnes (auteur, modificateur, propriétaire) : un choix affiche leurs documents
+    const personnes = donnees.personnes || [];
+    if (personnes.length) {
+      elements.push({ titre: 'Personnes' });
+      for (const p of personnes) {
+        const noeud = element('div', 'suggestion personne');
+        noeud.append(element('span', 'icone', '👤'), element('span', 'nom', p.nom),
+          element('span', 'nb', `${p.nb} document${p.nb > 1 ? 's' : ''}`));
+        elements.push({ type: 'personne', nom: p.nom, noeud });
+      }
+    }
+
     for (const e of elements) {
-      if (e === null) {
-        liste.append(element('div', 'suggestions-titre', 'Documents'));
+      if (e.titre) {
+        liste.append(element('div', 'suggestions-titre', e.titre));
         continue;
       }
       e.noeud.setAttribute('role', 'option');
@@ -387,7 +406,7 @@
       e.noeud.addEventListener('mousedown', (ev) => { ev.preventDefault(); choisir(e); });
       liste.append(e.noeud);
     }
-    elements = elements.filter((e) => e !== null);
+    elements = elements.filter((e) => !e.titre);
 
     actif = -1;
     liste.hidden = elements.length === 0;
@@ -446,7 +465,8 @@
     }
   });
 
-  formulaire.addEventListener('change', (e) => { if (e.target !== champ) chercher(); });
+  // Le champ « Personne » applique son filtre lui-même (au choix ou sur Entrée)
+  formulaire.addEventListener('change', (e) => { if (e.target !== champ && e.target !== champPersonne) chercher(); });
   formulaire.addEventListener('submit', (e) => {
     e.preventDefault();
     fermerSuggestions();
@@ -545,7 +565,51 @@
       bloc.prepend(c);
     });
     formulaire.elements.role.value = noms.length ? role : '';
+    champPersonne.value = noms[0] || '';
   }
+
+  // Champ « Personne » des filtres : propositions pendant la frappe, filtre au choix (tous rôles)
+  const champPersonne = document.getElementById('champ-personne');
+  const listePersonnes = document.getElementById('liste-personnes');
+  let propositions = [];
+  let requetePersonnes = null;
+
+  champPersonne.addEventListener('input', async () => {
+    const q = champPersonne.value.trim();
+    // Valeur choisie dans la liste : on filtre aussitôt
+    if (propositions.some((p) => p.nom === champPersonne.value)) return appliquerPersonne();
+    if (requetePersonnes) requetePersonnes.abort();
+    if (q.length < 2) return;
+    requetePersonnes = new AbortController();
+    try {
+      const reponse = await fetch('/personnes?' + new URLSearchParams({ q }), { signal: requetePersonnes.signal });
+      propositions = await reponse.json();
+      listePersonnes.replaceChildren(...propositions.map((p) => {
+        const option = element('option');
+        option.value = p.nom;
+        option.label = `${p.nb} document${p.nb > 1 ? 's' : ''}`;
+        return option;
+      }));
+    } catch (e) {
+      if (e.name !== 'AbortError') propositions = [];
+    }
+  });
+
+  function appliquerPersonne() {
+    const saisi = champPersonne.value.trim();
+    // Saisie partielle validée par Entrée : la première personne proposée
+    const nom = !saisi ? '' : (propositions.find((p) => p.nom === saisi) || propositions[0] || { nom: saisi }).nom;
+    filtrerPersonne(nom ? [nom] : [], '');
+    chercher(parametres(), true);
+  }
+
+  champPersonne.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault(); // sinon Entrée enverrait tout le formulaire
+    appliquerPersonne();
+  });
+  // Champ vidé (croix ou effacement) : plus de filtre
+  champPersonne.addEventListener('search', () => { if (!champPersonne.value) appliquerPersonne(); });
 
   document.getElementById('effacer-filtres').addEventListener('click', () => {
     formulaire.querySelectorAll('select').forEach((s) => { s.value = ''; });

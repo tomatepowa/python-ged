@@ -204,6 +204,9 @@ def test_variantes_nom():
     assert variantes_nom("Antoine Cosson", "acosson", "") == ["acosson", "antoine cosson", "cosson antoine"]
     # Accents, majuscules et ponctuation ignorés
     assert "helene dupre" in variantes_nom("DUPRÉ, Hélène")
+    # Adresse de messagerie (5 mots) : gardée telle quelle, sans permutations
+    assert variantes_nom("a.cosson@oc-sante.fr") == ["a cosson oc sante fr"]
+    assert variantes_nom("@", "") == []
 
 
 def test_mes_documents_et_filtre_personne(base_de_test):
@@ -250,3 +253,51 @@ def test_lien_du_filtre_personne():
     assert lien == "vue=liste&role=auteur&personne=Antoine+Cosson&personne=acosson"
     # Sans personne, pas de rôle orphelin dans l'adresse
     assert Filtres(role="auteur").lien() == ""
+
+
+def test_chercher_personnes(base_de_test):
+    from ged.recherche import Filtres, chercher_personnes, rechercher
+
+    conn = base_de_test
+    conn.execute("TRUNCATE document_tag, document, tag, vocabulaire, source RESTART IDENTITY CASCADE")
+    source = conn.execute("INSERT INTO source (nom, chemin, pole) VALUES ('Infra', 'x', 'Infra') RETURNING id").fetchone()["id"]
+    compte = "CLINIQUE" + chr(92) + "acosson"
+    for nom, auteur, modificateur, proprietaire, sids in [
+        ("a", "Antoine Cosson", "Antoine Cosson", compte, [UTILISATEURS]),
+        ("b", "COSSON Antoine", "Hélène Dupré", compte, [UTILISATEURS]),
+        ("c", "Hélène Dupré", None, None, [UTILISATEURS]),
+        # Invisible pour la personne qui cherche : ni compté, ni proposé
+        ("d", "Marc Petit", "Antoine Cosson", None, [INFRA]),
+    ]:
+        conn.execute(
+            "INSERT INTO document (source_id, chemin, chemin_relatif, nom, extension, famille, taille, modifie_le, "
+            "statut, auteur, dernier_modificateur, proprietaire, acces_sids) "
+            "VALUES (%s, %s, %s, %s, '.docx', 'Word', 1, now(), 'indexe', %s, %s, %s, %s)",
+            (source, nom, nom, nom, auteur, modificateur, proprietaire, sids),
+        )
+    filtre = filtre_acces(conn, lecteur(UTILISATEURS))
+
+    # Deux graphies, une personne ; le compte Windows à part ; documents comptés une fois
+    assert chercher_personnes(conn, "coss", filtre) == [
+        {"nom": "Antoine Cosson", "nb": 2},
+        {"nom": compte, "nb": 2},
+    ]
+    assert chercher_personnes(conn, "helene", filtre) == [{"nom": "Hélène Dupré", "nb": 2}]
+    assert chercher_personnes(conn, "petit", filtre) == []
+    assert chercher_personnes(conn, "  ", filtre) == []
+
+    # Le choix d'une personne, rôle quelconque, retrouve ses documents
+    trouves = rechercher(conn, Filtres(personnes=["Hélène Dupré"], vue="liste"), filtre)
+    assert sorted(d["nom"] for d in trouves.documents) == ["b", "c"]
+
+    # Auteur sous forme d'adresse de messagerie (5 mots une fois la ponctuation retirée)
+    adresse = "a.cosson@oc-sante.fr"
+    conn.execute(
+        "INSERT INTO document (source_id, chemin, chemin_relatif, nom, extension, famille, taille, modifie_le, "
+        "statut, auteur, acces_sids) VALUES (%s, 'e', 'e', 'e', '.pdf', 'PDF', 1, now(), 'indexe', %s, %s)",
+        (source, adresse, [UTILISATEURS]),
+    )
+    assert {"nom": adresse, "nb": 1} in chercher_personnes(conn, "cosson@oc", filtre)
+    for role in ("", "auteur"):
+        trouves = rechercher(conn, Filtres(personnes=[adresse], role=role, vue="liste"), filtre)
+        assert [d["nom"] for d in trouves.documents] == ["e"]

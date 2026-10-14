@@ -7,7 +7,7 @@ import sys
 import pytest
 
 from ged.acces import Lecteur
-from ged.annuaire import AnnuaireAD, categorie, organiser_groupes
+from ged.annuaire import AnnuaireAD, categorie, nom_complet_local, organiser_groupes
 
 DOMAINE = "S-1-5-21-10-20-30"
 MACHINE = "S-1-5-21-99-98-97"
@@ -111,7 +111,8 @@ def dn(nom):
 # Ce que renverrait l'annuaire pour chaque SID
 OBJETS = {
     MOI: {"dn": "CN=Cosson Antoine,OU=DSI,DC=cliniques,DC=fr",
-          "member_of": (dn("DSI-Infra"), dn("Diffusion DSI")), "primary_group_id": 513},
+          "member_of": (dn("DSI-Infra"), dn("Diffusion DSI")), "primary_group_id": 513,
+          "display_name": "Antoine Cosson"},
     DSI_INFRA: {"dn": dn("DSI-Infra"), "member_of": (dn("DSI"),), "primary_group_id": None},
     # Casse différente dans memberOf : les DN se comparent sans tenir compte de la casse
     DSI: {"dn": dn("DSI"), "member_of": ("cn=GED-Lecture,ou=Groupes,dc=cliniques,dc=fr",), "primary_group_id": None},
@@ -171,3 +172,29 @@ def test_graphe_annuaire_en_panne():
     annuaire = AnnuaireSimule(panne=True)
     graphe = annuaire.graphe({MOI, DSI_INFRA})
     assert graphe == {MOI: [], DSI_INFRA: []}
+
+
+def test_nom_complet_lu_dans_l_annuaire():
+    annuaire = AnnuaireSimule()
+    assert annuaire.nom_affiche(MOI) == "Antoine Cosson"
+    # Déjà en mémoire : pas de nouvelle recherche
+    nombre = len(annuaire.recherches)
+    assert annuaire.nom_affiche(MOI) == "Antoine Cosson"
+    assert len(annuaire.recherches) == nombre
+    assert annuaire.nom_affiche(DSI) is None            # un groupe n'a pas de displayName ici
+    assert annuaire.nom_affiche(TOUT_LE_MONDE) is None  # pas un SID de domaine : rien n'est cherché
+
+
+def test_nom_complet_local():
+    # Compte d'un autre domaine que le poste : pas de base locale à consulter
+    assert nom_complet_local("CLINIQUES" + chr(92) + "acosson") is None
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="comptes locaux : Windows uniquement")
+def test_nom_complet_local_compte_courant():
+    import os
+
+    import win32api
+
+    nom = nom_complet_local(os.environ["COMPUTERNAME"] + chr(92) + win32api.GetUserName())
+    assert nom is None or isinstance(nom, str)

@@ -23,7 +23,7 @@
       <a href="{{ lien_personne(personnes, 'proprietaire') }}"><span class="chiffre">{{ documents.proprietaire }}</span> dont vous êtes propriétaire</a>
     </div>
     <p class="note petit">Auteur et dernier modificateur : propriétés des documents (Word, Excel, PowerPoint, PDF),
-      comparées à votre nom{% if lecteur.nom_affiche %} « {{ lecteur.nom_affiche }} »{% endif %}, dans n'importe quel ordre.
+      comparées à votre nom{% if nom_affiche %} « {{ nom_affiche }} »{% endif %}, dans n'importe quel ordre.
       Propriétaire : propriétaire du fichier sur le partage. Seuls les documents que vous pouvez voir sont comptés.</p>
   </section>
   {% endif %}

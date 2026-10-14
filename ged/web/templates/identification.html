@@ -14,6 +14,16 @@
       <h1>Identification Windows nécessaire</h1>
       <p>La GED affiche les documents selon vos droits sur les partages réseau : elle a besoin de savoir
         qui vous êtes. Votre navigateur aurait dû s'identifier automatiquement avec votre session Windows.</p>
+      {% set hote = request.url.hostname or "" %}
+      {% if "." in hote or ":" in hote %}
+      {# Une adresse IP ou un nom complet est classé en zone Internet : pas d'identification automatique #}
+      <p class="avertissement">L'adresse <strong>{{ hote }}</strong> contient des points : le navigateur la considère
+        comme un site Internet et n'y envoie pas votre session Windows (il demande un identifiant et un mot de passe).
+        {% if hote in ("127.0.0.1", "::1") %}Sur ce poste, utilisez plutôt
+        <a href="{{ request.url.replace(hostname='localhost') }}">{{ request.url.replace(hostname='localhost') }}</a>.
+        {% else %}Utilisez le nom court du serveur (sans le domaine), ou faites ajouter cette adresse aux sites « Intranet local ».{% endif %}
+      </p>
+      {% endif %}
       <ul>
         <li>Utilisez Edge ou Chrome, sur un poste connecté au domaine (ou au VPN).</li>
         <li>Si une fenêtre vous a demandé un identifiant, saisissez votre compte Windows habituel.</li>

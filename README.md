@@ -173,7 +173,7 @@ Options : `-Port 5433` si un PostgreSQL utilise déjà le port 5432, `-Proxy htt
 PostgreSQL ne tourne pas en service Windows (il faudrait des droits admin). Au quotidien (précéder de `powershell -ExecutionPolicy Bypass -File` si l'exécution de scripts est bloquée sur le poste) :
 
 ```powershell
-.\outils\installation\GED-Poste.ps1 demarrer    # PostgreSQL si besoin + interface sur http://127.0.0.1:8000
+.\outils\installation\GED-Poste.ps1 demarrer    # PostgreSQL si besoin + interface sur http://localhost:8000
 .\outils\installation\GED-Poste.ps1 indexer     # indexe les partages
 .\outils\installation\GED-Poste.ps1 ocr         # passe les scans en OCR
 .\outils\installation\GED-Poste.ps1 analyser    # rapport pour construire la taxonomie (analyse-taxonomie.md)
@@ -244,7 +244,7 @@ uv run ged indexer --forcer    # relit tous les fichiers (le texte OCR des fichi
 uv run ged recalculer          # réapplique tags et codes sans relire les fichiers (après modif. de taxonomie.toml)
 uv run ged ocr                 # passe en OCR les scans en attente
 uv run ged ocr --limite 50     # ... par lots
-uv run ged serveur             # interface web sur http://127.0.0.1:8000
+uv run ged serveur             # interface web sur http://localhost:8000
 uv run ged analyser           # écrit analyse-taxonomie.md : dossiers, mots fréquents, couverture des tags
 uv run ged reinitialiser       # vide l'index (confirmation demandée), puis relancer ged indexer
 ```

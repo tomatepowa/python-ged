@@ -75,7 +75,7 @@ switch ($Action) {
     }
     'demarrer' {
         Start-Postgres
-        Write-Host 'Interface : http://127.0.0.1:8000  (Ctrl+C pour arrêter)' -ForegroundColor Green
+        Write-Host 'Interface : http://localhost:8000  (Ctrl+C pour arrêter)' -ForegroundColor Green
         Invoke-Ged @('serveur')
     }
     default {

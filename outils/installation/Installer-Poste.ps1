@@ -337,6 +337,6 @@ if (-not $sourcesAnalysees) {
 }
 Write-Host "    1. Indexer      : powershell -ExecutionPolicy Bypass -File `"$commandes`" indexer"
 Write-Host "    2. OCR (scans)  : powershell -ExecutionPolicy Bypass -File `"$commandes`" ocr"
-Write-Host "    3. Interface    : powershell -ExecutionPolicy Bypass -File `"$commandes`" demarrer   puis http://127.0.0.1:8000"
+Write-Host "    3. Interface    : powershell -ExecutionPolicy Bypass -File `"$commandes`" demarrer   puis http://localhost:8000"
 Write-Host ''
 Write-Host "  Après un redémarrage du PC, PostgreSQL ne se relance pas tout seul : `"$commandes`" demarrer s'en charge."

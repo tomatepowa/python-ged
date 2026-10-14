@@ -13,7 +13,7 @@
       <a href="/">Recherche</a>
       {% if request.state.lecteur.admin %}<a href="/stats">État de l'index</a>{% endif %}
     </nav>
-    {% if request.state.lecteur.compte %}<span class="compte" title="Documents affichés selon vos droits Windows">{{ request.state.lecteur.compte }}</span>{% endif %}
+    {% if request.state.lecteur.compte %}<a class="compte" href="/moi" title="Documents affichés selon vos droits Windows : voir vos groupes">{{ request.state.lecteur.compte }}{% if request.state.lecteur.admin %} · admin{% endif %}</a>{% endif %}
   </header>
   <main>
     {% block contenu %}{% endblock %}

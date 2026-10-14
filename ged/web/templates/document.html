@@ -63,12 +63,23 @@
 
   <section>
     <h2>Droits d'accès</h2>
+    {% if request.state.lecteur.compte %}
+    <p class="acces-moi">
+      {% if accordant %}
+        Vous voyez ce document grâce à
+        {% for nom in accordant %}<strong>{{ nom }}</strong>{{ ", " if not loop.last }}{% endfor %}.
+      {% elif request.state.lecteur.admin %}
+        Vous voyez ce document en tant qu'administrateur de la GED : vos groupes ne vous donnent pas le droit de le lire.
+      {% endif %}
+      <a href="/moi">Vos groupes</a>
+    </p>
+    {% endif %}
     {% if doc.droits %}
     <table class="droits">
       <thead><tr><th>Utilisateur ou groupe</th><th>Droits</th><th>Origine</th></tr></thead>
       <tbody>
       {% for d in doc.droits %}
-        <tr{% if d.refus %} class="refus"{% endif %}>
+        <tr class="{{ 'refus' if d.refus }} {{ 'moi' if d.compte in mes_comptes }}"{% if d.compte in mes_comptes %} title="Vous êtes concerné (votre compte ou l'un de vos groupes)"{% endif %}>
           <td>{{ d.compte }}</td>
           <td>{% if d.refus %}<span class="badge alerte">Refusé</span> {% endif %}{{ d.droits }}</td>
           <td class="note">{{ "hérité du dossier" if d.herite else "défini sur le fichier" }}</td>

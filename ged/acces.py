@@ -86,3 +86,34 @@ def diagnostic_acces(conn: psycopg.Connection) -> str:
     if not comptes["avec_droits"]:
         return "droits_absents"
     return "aucun_droit"
+
+
+def sids_accordant(acces_sids: list[str] | None, acces_ordre: list[list[str]] | None, lecteur: Lecteur) -> list[str]:
+    """SID de la personne (compte ou groupes) qui lui donnent la lecture d'un document.
+
+    Avec un refus dans la liste des droits, seules comptent les autorisations placées avant le
+    premier refus qui la concerne (Windows s'arrête à la première entrée qui décide).
+    """
+    if acces_ordre is None:
+        return [sid for sid in acces_sids or [] if sid in lecteur.sids]
+    accordant: list[str] = []
+    for sid, sens in acces_ordre:
+        if sens == "R" and sid in lecteur.sids_refus:
+            break
+        if sens == "A" and sid in lecteur.sids and sid not in accordant:
+            accordant.append(sid)
+    return accordant
+
+
+# Entrées du jeton Windows qui ne sont pas des groupes : session d'ouverture, niveau d'intégrité
+_PAS_DES_GROUPES = ("S-1-5-5-", "S-1-16-")
+
+
+def groupes_du_lecteur(lecteur: Lecteur, nommer) -> dict[str, list[str]]:
+    """Groupes de la personne, nommés par `nommer(sid)` et triés : ceux qui donnent des droits,
+    et ceux « refus seulement » (qui ne comptent que pour les refus, ex. Administrateurs filtré
+    par le contrôle de compte d'utilisateur)."""
+    def noms(sids):
+        return sorted((nommer(sid) for sid in sids if not sid.startswith(_PAS_DES_GROUPES)), key=str.lower)
+
+    return {"actifs": noms(lecteur.sids), "refus_seulement": noms(lecteur.sids_refus - lecteur.sids)}

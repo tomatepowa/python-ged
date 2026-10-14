@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block titre %}Mes groupes – GED DSI{% endblock %}
+
+{% block contenu %}
+<article class="fiche">
+  {% if not lecteur.compte %}
+  <h1>Identification désactivée</h1>
+  <p>Cette GED est configurée sans identification Windows : tous les documents sont visibles par tous.</p>
+  {% else %}
+  <h1>{{ lecteur.compte }}</h1>
+  <p>
+    La GED vous montre les documents que vous avez le droit de lire sur les partages, d'après votre compte
+    et les groupes Windows ci-dessous (groupes imbriqués compris), tels qu'ils étaient à votre connexion.
+    {% if lecteur.admin %}<br><strong>Administrateur de la GED</strong> : vous voyez tous les documents, et l'état de l'index.{% endif %}
+  </p>
+
+  <section>
+    <h2>Vos groupes ({{ groupes.actifs | length }})</h2>
+    <ul class="groupes">
+      {% for nom in groupes.actifs %}<li>{{ nom }}</li>{% endfor %}
+    </ul>
+  </section>
+
+  {% if groupes.refus_seulement %}
+  <section>
+    <h2>Groupes « refus seulement » ({{ groupes.refus_seulement | length }})</h2>
+    <p class="note">Windows les a désactivés pour cette connexion (par exemple Administrateurs, filtré par le contrôle
+      de compte d'utilisateur) : ils ne donnent aucun droit, mais un refus qui les vise s'applique.</p>
+    <ul class="groupes">
+      {% for nom in groupes.refus_seulement %}<li>{{ nom }}</li>{% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <p class="note petit">Un changement de groupe est pris en compte à votre prochaine connexion à la GED
+    (fermez le navigateur, ou attendez la fin de la session).</p>
+  {% endif %}
+</article>
+{% endblock %}

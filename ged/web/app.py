@@ -17,8 +17,9 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from ged import config as configuration
-from ged.acces import FiltreAcces, Lecteur, diagnostic_acces, filtre_acces
+from ged.acces import FiltreAcces, Lecteur, diagnostic_acces, filtre_acces, groupes_du_lecteur, sids_accordant
 from ged.arborescence import construire_arbre_resultats, dossier_parent, fil_ariane
+from ged.droits import nom_compte
 from ged.recherche import DOCUMENTS_ARBRE_MAX, PAR_PAGE, Filtres, facettes, rechercher, statistiques, suggerer
 from ged.web.authentification import (
     COOKIE, COOKIE_NAVIGATEUR, Authentification, AuthentificationRefusee, Negociateur, NegociateurSSPI,
@@ -292,10 +293,26 @@ def creer_app(cfg: configuration.Config | None = None, negociateur: Negociateur 
                 {"empreinte": doc["empreinte"], "id": document_id, **filtre.parametres},
             ).fetchall() if doc["empreinte"] else []
         dossier = dossier_parent(doc["chemin_relatif"])
+        lecteur: Lecteur = request.state.lecteur
+        # Ce qui donne à la personne le droit de voir ce document (vide pour un administrateur
+        # de la GED que ses groupes n'autorisent pas, ou sans identification)
+        accordant = [nom_compte(sid) for sid in sids_accordant(doc["acces_sids"], doc["acces_ordre"], lecteur)]
+        mes_comptes = {nom_compte(sid) for sid in lecteur.sids_refus} if lecteur.compte else set()
         return templates.TemplateResponse(
             request,
             "document.html",
-            {"doc": doc, "tags": tags, "doublons": doublons, "dossier": dossier, "ariane": fil_ariane(dossier)},
+            {
+                "doc": doc, "tags": tags, "doublons": doublons, "dossier": dossier, "ariane": fil_ariane(dossier),
+                "accordant": accordant, "mes_comptes": mes_comptes,
+            },
+        )
+
+    @app.get("/moi", response_class=HTMLResponse)
+    def moi(request: Request):
+        """Compte Windows de la personne connectée et ses groupes (ceux qui comptent pour ses droits)."""
+        lecteur: Lecteur = request.state.lecteur
+        return templates.TemplateResponse(
+            request, "moi.html", {"lecteur": lecteur, "groupes": groupes_du_lecteur(lecteur, nom_compte)}
         )
 
     @app.get("/dossiers")

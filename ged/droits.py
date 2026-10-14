@@ -141,7 +141,7 @@ def lire_securite(chemin: Path) -> Securite:
         return Securite()
 
     proprietaire_sid = descripteur.GetSecurityDescriptorOwner()
-    proprietaire = _nom_compte(win32security.ConvertSidToStringSid(proprietaire_sid)) if proprietaire_sid else None
+    proprietaire = nom_compte(win32security.ConvertSidToStringSid(proprietaire_sid)) if proprietaire_sid else None
 
     dacl = descripteur.GetSecurityDescriptorDacl()
     if dacl is None:
@@ -154,7 +154,7 @@ def lire_securite(chemin: Path) -> Securite:
         )
     entrees = entrees_dacl(dacl)
     sids, ordre = acces_lecture([(sid, masque, refus) for sid, masque, refus, _ in entrees])
-    droits = fusionner([(_nom_compte(sid), masque, refus, herite) for sid, masque, refus, herite in entrees])
+    droits = fusionner([(nom_compte(sid), masque, refus, herite) for sid, masque, refus, herite in entrees])
     return Securite(proprietaire, droits, sids, ordre)
 
 
@@ -200,9 +200,11 @@ def lire_partage(chemin: Path | str) -> list[list[str]] | None:
 
 
 @lru_cache(maxsize=10_000)
-def _nom_compte(sid_texte: str) -> str:
+def nom_compte(sid_texte: str) -> str:
     """'S-1-5-32-544' -> 'BUILTIN\\Administrateurs'. Le SID brut si le compte est introuvable
-    (compte supprimé, domaine injoignable)."""
+    (compte supprimé, domaine injoignable) ou hors Windows."""
+    if sys.platform != "win32":
+        return sid_texte
     import pywintypes
     import win32security
 

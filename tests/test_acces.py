@@ -8,7 +8,7 @@ from importlib.resources import files
 
 import pytest
 
-from ged.acces import TOUT, Lecteur, diagnostic_acces, filtre_acces, peut_lire
+from ged.acces import TOUT, Lecteur, diagnostic_acces, filtre_acces, groupes_du_lecteur, peut_lire, sids_accordant
 from ged.droits import ECRITURE, GENERIC_READ, LECTURE, MODIFICATION, acces_lecture
 
 INFRA = "S-1-5-21-1-2-3-1101"
@@ -179,3 +179,30 @@ def test_diagnostic_quand_aucun_document_n_est_visible(base_de_test):
     assert diagnostic_acces(conn) == "droits_absents"
     ajouter("recent", [INFRA])
     assert diagnostic_acces(conn) == "aucun_droit"
+
+
+@pytest.mark.parametrize(
+    "sids, ordre, personne, attendu",
+    [
+        # Sans refus : tous ses groupes autorisés
+        ([INFRA, UTILISATEURS], None, lecteur(UTILISATEURS, INFRA), [INFRA, UTILISATEURS]),
+        ([INFRA], None, lecteur(UTILISATEURS), []),
+        # Avec refus : seules les autorisations placées avant le premier refus qui la vise
+        ([INFRA, UTILISATEURS], [[INFRA, "A"], [STAGIAIRES, "R"], [UTILISATEURS, "A"]],
+         lecteur(INFRA, STAGIAIRES, UTILISATEURS), [INFRA]),
+        ([UTILISATEURS], [[STAGIAIRES, "R"], [UTILISATEURS, "A"]], lecteur(UTILISATEURS), [UTILISATEURS]),
+        ([UTILISATEURS], None, lecteur(), []),
+    ],
+)
+def test_sids_accordant(sids, ordre, personne, attendu):
+    assert sids_accordant(sids, ordre, personne) == attendu
+
+
+def test_groupes_du_lecteur():
+    noms = {INFRA: r"CLINIQUE\DSI-Infra", UTILISATEURS: r"CLINIQUE\Utilisateurs du domaine",
+            ADMINS_LOCAUX: r"BUILTIN\Administrateurs", "S-1-5-5-0-123": "session", "S-1-16-8192": "intégrité"}
+    personne = lecteur(UTILISATEURS, INFRA, "S-1-5-5-0-123", refus_seulement=(ADMINS_LOCAUX, "S-1-16-8192"))
+    assert groupes_du_lecteur(personne, noms.get) == {
+        "actifs": [r"CLINIQUE\DSI-Infra", r"CLINIQUE\Utilisateurs du domaine"],
+        "refus_seulement": [r"BUILTIN\Administrateurs"],
+    }

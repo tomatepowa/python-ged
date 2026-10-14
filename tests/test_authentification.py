@@ -160,3 +160,14 @@ def test_vraie_negociation_ntlm_avec_la_session_courante():
     # Identifiée (cookie de session), pas administratrice de la GED (aucun groupe configuré)
     assert reponse.status_code == 403
     assert COOKIE in reponse.cookies
+
+
+def test_page_de_mes_groupes(client):
+    client.get("/moi", headers=ntlm(b"negociation"))
+    reponse = client.get("/moi", headers=ntlm(b"reponse"))
+    assert reponse.status_code == 200
+    assert r"CLINIQUE\tech" in reponse.text
+    # SID inconnu du domaine (tests) : affiché tel quel
+    assert "S-1-5-21-1-2-3-1101" in reponse.text
+    # Le nom du bandeau mène à cette page
+    assert 'href="/moi"' in reponse.text

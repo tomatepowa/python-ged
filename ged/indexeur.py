@@ -24,7 +24,7 @@ from ged.extraction import Resultat, extraire, famille
 from ged.ocr import ocr, texte_exploitable
 from ged.progression import Inventaire, Progression
 from ged.taxonomie import Taxonomie
-from ged.texte import detecter_code
+from ged.texte import code_document
 
 log = logging.getLogger(__name__)
 
@@ -422,16 +422,15 @@ class Indexeur:
             contenu = doc["contenu"] or ""
             if doc["methode"] == "ocr" and doc["statut"] == "indexe" and not texte_exploitable(contenu, vocabulaire):
                 self.conn.execute(
-                    "UPDATE document SET statut = 'sans_texte', contenu = '', erreur = %s, code_doc = NULL "
-                    "WHERE id = %s",
+                    "UPDATE document SET statut = 'sans_texte', contenu = '', erreur = %s WHERE id = %s",
                     (MESSAGE_SANS_TEXTE, doc["id"]),
                 )
                 contenu = ""
                 bilan["ocr_ecarte"] += 1
-            else:
-                self.conn.execute(
-                    "UPDATE document SET code_doc = %s WHERE id = %s", (detecter_code(contenu[:5000]), doc["id"])
-                )
+            self.conn.execute(
+                "UPDATE document SET code_doc = %s WHERE id = %s",
+                (code_document(doc["chemin_relatif"], contenu), doc["id"]),
+            )
             self._appliquer_tags(doc["id"], f"{doc['titre'] or ''} {doc['chemin_relatif']}", contenu)
             bilan["recalcule"] += 1
         documents.close()

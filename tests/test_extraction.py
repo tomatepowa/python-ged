@@ -5,7 +5,7 @@ import pymupdf
 import pytest
 
 from ged.extraction import extraire, famille
-from ged.texte import detecter_code
+from ged.texte import code_document, detecter_code
 
 
 def test_docx_texte_entete_et_proprietes(fabriquer_docx):
@@ -131,10 +131,22 @@ def test_famille(extension, attendu):
         ("DSI-BI-MO-0042", "DSI-BI-MO-0042"),
         # Faux positif constaté sur un acte notarié : une date n'est pas un code
         ("Réf. SOLID-20-10-20", None),
+        # Séparateurs "." et "_"
+        ("NT.OC.GSI.01  procédure de connexion.docx", "NT.OC.GSI.01"),
+        ("scan_NT_OC_GSI_01_procedure.pdf", "NT_OC_GSI_01"),
+        ("PR.DSI.INFRA.003.V2.pdf", "PR.DSI.INFRA.003.V2"),
+        ("version 2.1.3 du logiciel", None),
     ],
 )
 def test_detecter_code(texte, attendu):
     assert detecter_code(texte) == attendu
+
+
+def test_code_document_cherche_d_abord_dans_le_nom():
+    assert code_document(r"Procedures\NT.OC.GSI.01  procédure.docx", "Réf : DSI-INFRA-PRO-012") == "NT.OC.GSI.01"
+    assert code_document(r"Procedures\procédure.docx", "Réf : DSI-INFRA-PRO-012") == "DSI-INFRA-PRO-012"
+    # Un dossier codé ne donne pas son code aux fichiers qu'il contient
+    assert code_document(r"NT.OC.GSI.01\annexe.docx", "") is None
 
 
 def test_resolution_ocr_plafonnee_pour_les_photos():

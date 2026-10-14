@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from xml.etree import ElementTree
 
-from ged.texte import detecter_code
+from ged.texte import code_document
 
 FAMILLES: dict[str, tuple[str, ...]] = {
     "Word": (".docx", ".docm", ".doc", ".dotx", ".dot", ".odt", ".rtf"),
@@ -100,8 +100,8 @@ def extraire(chemin: Path, soffice: str | None = None) -> Resultat:
     except Exception as exc:  # fichier corrompu, protégé par mot de passe, verrouillé...
         return Resultat(statut="erreur", erreur=f"{type(exc).__name__}: {exc}"[:500])
 
-    if resultat.contenu and not resultat.code_doc:
-        resultat.code_doc = detecter_code(resultat.contenu[:5000])
+    if not resultat.code_doc:
+        resultat.code_doc = code_document(chemin.name, resultat.contenu)
     return resultat
 
 

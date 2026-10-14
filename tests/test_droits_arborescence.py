@@ -41,9 +41,11 @@ def test_lire_securite_fichier_reel(tmp_path):
 
     fichier = tmp_path / "note.txt"
     fichier.write_text("x")
-    proprietaire, droits = lire_securite(fichier)
-    assert proprietaire
-    assert droits and all({"compte", "droits", "refus", "herite"} <= d.keys() for d in droits)
+    securite = lire_securite(fichier)
+    assert securite.proprietaire
+    assert securite.droits and all({"compte", "droits", "refus", "herite"} <= d.keys() for d in securite.droits)
+    # Le fichier vient d'être créé par la session courante : au moins un SID peut le lire
+    assert securite.acces_sids and all(sid.startswith("S-1-") for sid in securite.acces_sids)
 
 
 def test_chemins():

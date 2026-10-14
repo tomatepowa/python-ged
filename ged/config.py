@@ -31,6 +31,13 @@ class Config:
     taxonomie: Path = Path("taxonomie.toml")
     # Exemples affichés dans la barre de recherche vide : « Rechercher : <exemples>… »
     exemples_recherche: str = ""
+    # Authentification Windows et filtrage des documents selon les droits NTFS (ged.acces)
+    authentification: bool = True
+    # "NTLM" ou "Negotiate" (Kerberos, si le compte du serveur porte le SPN HTTP/<serveur>)
+    protocole: str = "NTLM"
+    # Groupes (« DOMAINE\groupe » ou SID) qui voient tous les documents et l'état de l'index
+    groupes_admin: list[str] = field(default_factory=list)
+    duree_session_heures: float = 8
 
 
 def charger(chemin: str | Path | None = None) -> Config:
@@ -50,9 +57,13 @@ def charger(chemin: str | Path | None = None) -> Config:
     ocr = donnees.get("ocr", {})
     conversion = donnees.get("conversion", {})
     interface = donnees.get("interface", {})
+    authentification = donnees.get("authentification", {})
 
     if "url" not in base:
         raise SystemExit(f"{fichier} : la clé [base] url est obligatoire.")
+    protocole = str(authentification.get("protocole", "NTLM"))
+    if protocole.lower() not in ("ntlm", "negotiate"):
+        raise SystemExit(f'{fichier} : [authentification] protocole doit valoir "NTLM" ou "Negotiate".')
 
     sources = [
         Source(nom=s["nom"], chemin=Path(s["chemin"]), pole=s.get("pole", s["nom"]))
@@ -73,4 +84,8 @@ def charger(chemin: str | Path | None = None) -> Config:
         soffice=conversion.get("soffice"),
         taxonomie=fichier.parent / donnees.get("taxonomie", "taxonomie.toml"),
         exemples_recherche=str(interface.get("exemples_recherche", "")).strip(),
+        authentification=bool(authentification.get("active", True)),
+        protocole="NTLM" if protocole.lower() == "ntlm" else "Negotiate",
+        groupes_admin=list(authentification.get("groupes_admin", [])),
+        duree_session_heures=float(authentification.get("duree_session_heures", 8)),
     )

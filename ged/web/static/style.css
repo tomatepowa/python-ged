@@ -493,3 +493,6 @@ a.badge.tag:hover { outline: 1px solid var(--tag-texte); }
 }
 .frise-poignees input:focus-visible { outline: none; }
 .frise-poignees input:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Compte Windows de la personne connectée, à droite du bandeau */
+.bandeau .compte { margin-left: auto; color: var(--texte-doux); font-size: .85rem; }

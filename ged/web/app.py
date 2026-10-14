@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import mimetypes
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -15,8 +16,14 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from ged import config as configuration
+from ged.acces import FiltreAcces, Lecteur, filtre_acces
 from ged.arborescence import construire_arbre_resultats, dossier_parent, fil_ariane
 from ged.recherche import DOCUMENTS_ARBRE_MAX, PAR_PAGE, Filtres, facettes, rechercher, statistiques, suggerer
+from ged.web.authentification import (
+    COOKIE, Authentification, AuthentificationRefusee, Negociateur, NegociateurSSPI, sids_des_comptes,
+)
+
+log = logging.getLogger(__name__)
 
 ICI = Path(__file__).parent
 templates = Jinja2Templates(directory=ICI / "templates")
@@ -97,7 +104,16 @@ def libelle_du_dossier(conn, filtres: Filtres) -> str | None:
     return " › ".join(filter(None, [source["nom"] if source else "?", *cible[1].split("\\")]))
 
 
-def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
+def refus_authentification(request: Request, entete: str) -> HTMLResponse:
+    """Réponse 401 : le navigateur s'identifie aussitôt avec la session Windows (sites intranet).
+    La page ne s'affiche que s'il ne le fait pas."""
+    return templates.TemplateResponse(
+        request, "identification.html", {}, status_code=401, headers={"WWW-Authenticate": entete}
+    )
+
+
+def creer_app(cfg: configuration.Config | None = None, negociateur: Negociateur | None = None) -> FastAPI:
+    """`negociateur` : vérification des jetons Windows (par défaut SSPI ; remplaçable dans les tests)."""
     cfg = cfg or configuration.charger()
     templates.env.globals["exemples_recherche"] = cfg.exemples_recherche
     pool = ConnectionPool(cfg.url_base, kwargs={"row_factory": dict_row}, min_size=1, max_size=10, open=False)
@@ -111,7 +127,57 @@ def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
     app = FastAPI(title="GED DSI", lifespan=cycle_de_vie, docs_url=None, redoc_url=None)
     app.mount("/static", StaticFiles(directory=ICI / "static"), name="static")
 
-    def contexte_resultats(filtres: Filtres, conn) -> dict:
+    # --- Qui est connecté ---------------------------------------------------------------
+    # request.state.lecteur : la personne identifiée par sa session Windows (voir
+    # ged.web.authentification) ; sans authentification, un lecteur qui voit tout.
+
+    if cfg.authentification:
+        auth = Authentification(
+            cfg.protocole,
+            negociateur or NegociateurSSPI(cfg.protocole, sids_des_comptes(cfg.groupes_admin)),
+            cfg.duree_session_heures * 3600,
+        )
+
+        @app.middleware("http")
+        async def authentifier(request: Request, suite):
+            if request.url.path.startswith("/static/"):
+                return await suite(request)
+            lecteur = auth.lecteur_de_session(request.cookies.get(COOKIE))
+            if lecteur:
+                request.state.lecteur = lecteur
+                return await suite(request)
+
+            jeton = auth.jeton_recu(request.headers.get("authorization", ""))
+            if jeton is None:
+                return refus_authentification(request, auth.entete_reponse())
+            client = request.client
+            # NTLM : les deux allers-retours de la négociation passent par la même connexion
+            connexion = (client.host, client.port) if client else ("?", 0)
+            try:
+                sortant, lecteur = auth.negociateur.avancer(connexion, jeton)
+            except AuthentificationRefusee as exc:
+                log.warning("Identification refusée depuis %s : %s", connexion[0], exc)
+                return refus_authentification(request, auth.entete_reponse())
+            if lecteur is None:
+                return refus_authentification(request, auth.entete_reponse(sortant))
+
+            log.info("Connexion de %s%s", lecteur.compte, " (administrateur de la GED)" if lecteur.admin else "")
+            request.state.lecteur = lecteur
+            reponse = await suite(request)
+            if sortant:  # Kerberos : jeton d'authentification mutuelle
+                reponse.headers["WWW-Authenticate"] = auth.entete_reponse(sortant)
+            reponse.set_cookie(COOKIE, auth.ouvrir_session(lecteur), httponly=True, samesite="lax")
+            return reponse
+    else:
+        @app.middleware("http")
+        async def sans_authentification(request: Request, suite):
+            request.state.lecteur = Lecteur.sans_filtre()
+            return await suite(request)
+
+    def acces(request: Request, conn) -> FiltreAcces:
+        return filtre_acces(conn, request.state.lecteur)
+
+    def contexte_resultats(filtres: Filtres, conn, acces: FiltreAcces) -> dict:
         contexte = {
             "tags_actifs": conn.execute(
                 "SELECT id, categorie, libelle FROM tag WHERE id = ANY(%s) ORDER BY categorie, libelle",
@@ -119,11 +185,11 @@ def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
             ).fetchall() if filtres.tags else [],
             "libelle_dossier": libelle_du_dossier(conn, filtres),
         }
-        return {**contexte, **contexte_vue(filtres, conn)}
+        return {**contexte, **contexte_vue(filtres, conn, acces)}
 
-    def contexte_vue(filtres: Filtres, conn) -> dict:
+    def contexte_vue(filtres: Filtres, conn, acces: FiltreAcces) -> dict:
         if filtres.vue == "arbre":
-            resultats = rechercher(conn, filtres, tous=True)
+            resultats = rechercher(conn, filtres, acces, tous=True)
             return {
                 "filtres": filtres,
                 "resultats": resultats,
@@ -131,7 +197,7 @@ def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
                 "tronque": resultats.total >= DOCUMENTS_ARBRE_MAX,
                 "gabarit": "_arbre.html",
             }
-        resultats = rechercher(conn, filtres)
+        resultats = rechercher(conn, filtres, acces)
         return {
             "filtres": filtres,
             "resultats": resultats,
@@ -142,8 +208,9 @@ def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     def accueil(request: Request, filtres: Annotated[Filtres, Depends(lire_filtres)]):
         with pool.connection() as conn:
-            contexte = contexte_resultats(filtres, conn)
-            choix = facettes(conn)
+            filtre = acces(request, conn)
+            contexte = contexte_resultats(filtres, conn, filtre)
+            choix = facettes(conn, filtre)
         tags_par_categorie: dict[str, list[dict]] = {}
         for t in choix["tags"]:
             tags_par_categorie.setdefault(t["categorie"], []).append(t)
@@ -157,22 +224,24 @@ def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
     def resultats_seuls(request: Request, filtres: Annotated[Filtres, Depends(lire_filtres)]):
         """Fragment HTML de la liste de résultats, pour la recherche pendant la frappe."""
         with pool.connection() as conn:
-            contexte = contexte_resultats(filtres, conn)
+            contexte = contexte_resultats(filtres, conn, acces(request, conn))
         return templates.TemplateResponse(request, contexte["gabarit"], contexte)
 
     @app.get("/suggestions")
-    def suggestions(q: str = ""):
+    def suggestions(request: Request, q: str = ""):
         """Suggestions de la liste déroulante sous la barre de recherche (JSON)."""
         with pool.connection() as conn:
-            return suggerer(conn, q[:200])
+            return suggerer(conn, q[:200], acces(request, conn))
 
     @app.get("/document/{document_id}", response_class=HTMLResponse)
     def detail(request: Request, document_id: int):
         with pool.connection() as conn:
+            filtre = acces(request, conn)
+            # Document hors des droits de la personne : même réponse que s'il n'existait pas
             doc = conn.execute(
                 "SELECT d.*, s.nom AS source, s.pole FROM document d JOIN source s ON s.id = d.source_id "
-                "WHERE d.id = %s",
-                (document_id,),
+                f"WHERE d.id = %(id)s AND {filtre.sql}",
+                {"id": document_id, **filtre.parametres},
             ).fetchone()
             if not doc:
                 raise HTTPException(404, "Document inconnu")
@@ -182,9 +251,10 @@ def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
                 (document_id,),
             ).fetchall()
             doublons = conn.execute(
-                "SELECT id, chemin_relatif FROM document "
-                "WHERE empreinte = %s AND id <> %s AND supprime_le IS NULL ORDER BY chemin_relatif",
-                (doc["empreinte"], document_id),
+                "SELECT d.id, d.chemin_relatif FROM document d "
+                f"WHERE d.empreinte = %(empreinte)s AND d.id <> %(id)s AND d.supprime_le IS NULL AND {filtre.sql} "
+                "ORDER BY d.chemin_relatif",
+                {"empreinte": doc["empreinte"], "id": document_id, **filtre.parametres},
             ).fetchall() if doc["empreinte"] else []
         dossier = dossier_parent(doc["chemin_relatif"])
         return templates.TemplateResponse(
@@ -199,12 +269,15 @@ def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
         return RedirectResponse(lien_dossier(source, chemin) if source is not None else "/", status_code=301)
 
     @app.get("/document/{document_id}/fichier")
-    def fichier(document_id: int):
-        """Sert le fichier d'origine. Seuls les chemins présents dans l'index sont accessibles."""
+    def fichier(request: Request, document_id: int):
+        """Sert le fichier d'origine. Seuls les chemins présents dans l'index, et que la personne
+        a le droit de lire, sont accessibles (le serveur lit le fichier avec son propre compte)."""
         with pool.connection() as conn:
+            filtre = acces(request, conn)
             doc = conn.execute(
-                "SELECT chemin, nom, extension FROM document WHERE id = %s AND supprime_le IS NULL",
-                (document_id,),
+                "SELECT d.chemin, d.nom, d.extension FROM document d "
+                f"WHERE d.id = %(id)s AND d.supprime_le IS NULL AND {filtre.sql}",
+                {"id": document_id, **filtre.parametres},
             ).fetchone()
         if not doc:
             raise HTTPException(404, "Document inconnu")
@@ -217,6 +290,9 @@ def creer_app(cfg: configuration.Config | None = None) -> FastAPI:
 
     @app.get("/stats", response_class=HTMLResponse)
     def stats(request: Request):
+        # Chemins, erreurs et volumes de toutes les sources : réservé aux administrateurs de la GED
+        if not request.state.lecteur.admin:
+            raise HTTPException(403, "Page réservée aux administrateurs de la GED")
         with pool.connection() as conn:
             donnees = statistiques(conn)
         return templates.TemplateResponse(request, "stats.html", donnees)

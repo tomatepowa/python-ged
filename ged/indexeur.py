@@ -19,7 +19,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from ged.config import Config, Source
-from ged.droits import lire_securite
+from ged.droits import Securite, lire_partage, lire_securite
 from ged.extraction import Resultat, extraire, famille
 from ged.ocr import ocr, texte_exploitable
 from ged.progression import Inventaire, Progression
@@ -103,6 +103,16 @@ def a_quitte(ancien: str, nouveau: str) -> bool:
     « Passeport.pdf » renommé en « passeport.pdf » existe toujours sous son ancienne casse.
     """
     return ancien.lower() == nouveau.lower() or not Path(ancien).exists()
+
+
+def colonnes_securite(securite: Securite) -> dict:
+    """Paramètres SQL des colonnes de sécurité d'un document."""
+    return {
+        "proprietaire": securite.proprietaire,
+        "droits": Jsonb(securite.droits) if securite.droits is not None else None,
+        "acces_sids": securite.acces_sids,
+        "acces_ordre": Jsonb(securite.acces_ordre) if securite.acces_ordre is not None else None,
+    }
 
 
 def rafraichir_vocabulaire(conn: psycopg.Connection) -> int:
@@ -202,11 +212,14 @@ class Indexeur:
         return bilan
 
     def _enregistrer_source(self, source: Source) -> int:
+        # Droits du partage réseau : relus à chaque indexation, comme ceux des fichiers
+        partage = lire_partage(source.chemin)
         ligne = self.conn.execute(
-            "INSERT INTO source (nom, chemin, pole) VALUES (%s, %s, %s) "
-            "ON CONFLICT (nom) DO UPDATE SET chemin = EXCLUDED.chemin, pole = EXCLUDED.pole "
+            "INSERT INTO source (nom, chemin, pole, acces_partage) VALUES (%s, %s, %s, %s) "
+            "ON CONFLICT (nom) DO UPDATE SET chemin = EXCLUDED.chemin, pole = EXCLUDED.pole, "
+            "acces_partage = EXCLUDED.acces_partage "
             "RETURNING id",
-            (source.nom, str(source.chemin), source.pole),
+            (source.nom, str(source.chemin), source.pole, Jsonb(partage) if partage is not None else None),
         ).fetchone()
         self.conn.commit()
         return ligne["id"]
@@ -217,18 +230,19 @@ class Indexeur:
 
         existant = self.conn.execute(
             "SELECT id, taille, modifie_le, empreinte, statut, methode, contenu, code_doc, nb_pages, "
-            "proprietaire, droits FROM document WHERE chemin = %s",
+            "proprietaire, droits, acces_sids, acces_ordre FROM document WHERE chemin = %s",
             (str(chemin),),
         ).fetchone()
         # Les droits sont relus à chaque passage : les modifier ne change pas la date du fichier
-        proprietaire, droits = lire_securite(chemin)
+        securite = lire_securite(chemin)
 
         if existant and not forcer and existant["taille"] == stat.st_size and existant["modifie_le"] == modifie_le:
-            if existant["proprietaire"] != proprietaire or existant["droits"] != droits:
+            if (existant["proprietaire"], existant["droits"], existant["acces_sids"], existant["acces_ordre"]) != (
+                    securite.proprietaire, securite.droits, securite.acces_sids, securite.acces_ordre):
                 self.conn.execute(
-                    "UPDATE document SET vu_le = now(), supprime_le = NULL, proprietaire = %s, droits = %s "
-                    "WHERE id = %s",
-                    (proprietaire, Jsonb(droits) if droits is not None else None, existant["id"]),
+                    "UPDATE document SET vu_le = now(), supprime_le = NULL, proprietaire = %(proprietaire)s, "
+                    "droits = %(droits)s, acces_sids = %(acces_sids)s, acces_ordre = %(acces_ordre)s WHERE id = %(id)s",
+                    {**colonnes_securite(securite), "id": existant["id"]},
                 )
                 return "droits_modifies"
             self.conn.execute(
@@ -242,8 +256,7 @@ class Indexeur:
             resultat = Resultat(statut="non_supporte", erreur=f"Fichier de plus de {self.cfg.taille_max_mo} Mo")
         else:
             signature = empreinte(chemin)
-            if not existant and self._suivre_deplacement(source, source_id, chemin, stat, signature,
-                                                          proprietaire, droits):
+            if not existant and self._suivre_deplacement(source, source_id, chemin, stat, signature, securite):
                 return "deplace"
             resultat = extraire(chemin, self.cfg.soffice)
 
@@ -261,12 +274,12 @@ class Indexeur:
             """
             INSERT INTO document (source_id, chemin, chemin_relatif, nom, extension, famille, taille,
                                   cree_le, modifie_le, empreinte, statut, erreur, methode, titre, auteur,
-                                  dernier_modificateur, proprietaire, droits,
+                                  dernier_modificateur, proprietaire, droits, acces_sids, acces_ordre,
                                   code_doc, nb_pages, contenu, vu_le, indexe_le, supprime_le)
             VALUES (%(source_id)s, %(chemin)s, %(chemin_relatif)s, %(nom)s, %(extension)s, %(famille)s,
                     %(taille)s, %(cree_le)s, %(modifie_le)s, %(empreinte)s, %(statut)s, %(erreur)s, %(methode)s,
                     %(titre)s, %(auteur)s, %(dernier_modificateur)s, %(proprietaire)s, %(droits)s,
-                    %(code_doc)s, %(nb_pages)s, %(contenu)s, now(), now(), NULL)
+                    %(acces_sids)s, %(acces_ordre)s, %(code_doc)s, %(nb_pages)s, %(contenu)s, now(), now(), NULL)
             ON CONFLICT (chemin) DO UPDATE SET
                 source_id = EXCLUDED.source_id, chemin_relatif = EXCLUDED.chemin_relatif,
                 nom = EXCLUDED.nom, extension = EXCLUDED.extension, famille = EXCLUDED.famille,
@@ -274,7 +287,8 @@ class Indexeur:
                 empreinte = EXCLUDED.empreinte, statut = EXCLUDED.statut, erreur = EXCLUDED.erreur,
                 methode = EXCLUDED.methode, titre = EXCLUDED.titre, auteur = EXCLUDED.auteur,
                 dernier_modificateur = EXCLUDED.dernier_modificateur, proprietaire = EXCLUDED.proprietaire,
-                droits = EXCLUDED.droits, code_doc = EXCLUDED.code_doc,
+                droits = EXCLUDED.droits, acces_sids = EXCLUDED.acces_sids, acces_ordre = EXCLUDED.acces_ordre,
+                code_doc = EXCLUDED.code_doc,
                 nb_pages = EXCLUDED.nb_pages, contenu = EXCLUDED.contenu,
                 vu_le = now(), indexe_le = now(), supprime_le = NULL
             RETURNING id
@@ -297,8 +311,7 @@ class Indexeur:
                 "titre": resultat.titre,
                 "auteur": resultat.auteur,
                 "dernier_modificateur": resultat.dernier_modificateur,
-                "proprietaire": proprietaire,
-                "droits": Jsonb(droits) if droits is not None else None,
+                **colonnes_securite(securite),
                 "code_doc": resultat.code_doc,
                 "nb_pages": resultat.nb_pages,
                 # PostgreSQL refuse le caractère NUL dans un texte
@@ -310,7 +323,7 @@ class Indexeur:
         return resultat.statut
 
     def _suivre_deplacement(self, source: Source, source_id: int, chemin: Path, stat: os.stat_result,
-                            signature: str, proprietaire: str | None, droits: list | None) -> bool:
+                            signature: str, securite: Securite) -> bool:
         """Fichier renommé ou déplacé : le document existant change de chemin au lieu d'être recréé.
 
         Il garde son identifiant (liens), son texte (pas de nouvel OCR ni de conversion) et ses
@@ -333,7 +346,7 @@ class Indexeur:
             UPDATE document SET source_id = %(source_id)s, chemin = %(chemin)s, chemin_relatif = %(chemin_relatif)s,
                 nom = %(nom)s, extension = %(extension)s, famille = %(famille)s, cree_le = %(cree_le)s,
                 modifie_le = %(modifie_le)s, proprietaire = %(proprietaire)s, droits = %(droits)s,
-                vu_le = now(), supprime_le = NULL
+                acces_sids = %(acces_sids)s, acces_ordre = %(acces_ordre)s, vu_le = now(), supprime_le = NULL
             WHERE id = %(id)s
             """,
             {
@@ -346,8 +359,7 @@ class Indexeur:
                 "famille": famille(chemin.suffix),
                 "cree_le": datetime.fromtimestamp(stat.st_ctime, tz=timezone.utc),
                 "modifie_le": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc),
-                "proprietaire": proprietaire,
-                "droits": Jsonb(droits) if droits is not None else None,
+                **colonnes_securite(securite),
             },
         )
         # Les tags automatiques dépendent aussi du chemin (dossiers, nom du fichier)

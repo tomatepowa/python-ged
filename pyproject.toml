@@ -19,6 +19,7 @@ ged = "ged.__main__:main"
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "pytest>=8",
 ]
 

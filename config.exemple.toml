@@ -34,6 +34,16 @@ soffice = 'C:\Program Files\LibreOffice\program\soffice.exe'
 # Exemples affichés dans la barre de recherche vide (« Rechercher : ...… »). Vide : « Rechercher… »
 exemples_recherche = "imprimante, identitovigilance, \"message d'erreur\""
 
+[authentification]
+# Identification par la session Windows ; chacun ne voit que les documents qu'il peut lire (droits NTFS).
+active = true                 # false : pas d'identification, tout le monde voit tout (démo, poste isolé)
+protocole = "NTLM"            # "Negotiate" (Kerberos) si le compte du serveur porte le SPN HTTP/<serveur>
+# Groupes qui voient tous les documents et la page État de l'index ("DOMAINE\groupe" ou SID)
+groupes_admin = [
+    # 'CLINIQUES\GED-Admins',
+]
+duree_session_heures = 8      # un changement de groupe est pris en compte à la session suivante
+
 # Une section [[sources]] par dossier à indexer. Le pôle sert de filtre dans la recherche.
 [[sources]]
 nom = "GED Métier"

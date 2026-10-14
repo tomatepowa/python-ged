@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Identification – GED DSI</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}?v={{ version_statique }}">
+</head>
+<body>
+  {# Affichée seulement si le navigateur ne s'est pas identifié avec la session Windows #}
+  <header class="bandeau"><span class="logo">GED <span>DSI</span></span></header>
+  <main>
+    <div class="fiche">
+      <h1>Identification Windows nécessaire</h1>
+      <p>La GED affiche les documents selon vos droits sur les partages réseau : elle a besoin de savoir
+        qui vous êtes. Votre navigateur aurait dû s'identifier automatiquement avec votre session Windows.</p>
+      <ul>
+        <li>Utilisez Edge ou Chrome, sur un poste connecté au domaine (ou au VPN).</li>
+        <li>Si une fenêtre vous a demandé un identifiant, saisissez votre compte Windows habituel.</li>
+        <li>Si cette page revient, l'adresse de la GED doit être ajoutée aux sites « Intranet local »
+          (Options Internet › Sécurité) : demandez-le à la DSI.</li>
+      </ul>
+      <p><a class="bouton" href="/">Réessayer</a></p>
+    </div>
+  </main>
+</body>
+</html>

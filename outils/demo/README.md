@@ -11,6 +11,9 @@ Jeu de documents **fictifs** (notes techniques, procédures, noms et logiciels m
    [base]
    url = "postgresql://ged:mot-de-passe@localhost:5432/ged_demo"
 
+   [authentification]
+   active = false    # captures : Chrome piloté ne s'identifie pas avec la session Windows
+
    [[sources]]
    nom = "GED Infra"
    chemin = 'C:\GED-demo\fichiers\GED Infra'

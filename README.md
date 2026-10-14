@@ -75,14 +75,15 @@ Les fichiers ne sont **ni déplacés, ni modifiés** : l'arborescence actuelle r
 - **Classement** : un document dont le nom ou le titre contient les mots cherchés passe devant ceux qui les citent seulement dans le texte.
 - **Extraits surlignés** : chaque résultat montre le passage où apparaissent les mots cherchés.
 - **Filtres** : pôle (Métier, Infra, BI, ITO…), type de fichier, tags (un clic sur un tag affiche tous les documents qui le portent), dossier.
-- **Frise des dates** sous la barre de recherche (bouton 📅, ouverte d'office quand une période est choisie) : courbe du nombre de documents trouvés par année de dernière modification (par mois sur 2 ans ou moins). Un clic sur une colonne filtre sur cette période, les deux poignées choisissent un intervalle. La date de création n'est pas utilisée : une copie ou une migration de NAS la remet à la date du transfert. La vue Liste se trie par pertinence, plus récents ou plus anciens d'abord.
+- **Frise des dates** sous la barre de recherche (ouverte d'un clic sur son aperçu, à droite du champ de recherche, et d'office quand une période est choisie) : courbe du nombre de documents trouvés par année de dernière modification (par mois sur 2 ans ou moins). Un clic sur une colonne filtre sur cette période, les deux poignées choisissent un intervalle. La date de création n'est pas utilisée : une copie ou une migration de NAS la remet à la date du transfert. La vue Liste se trie par pertinence, plus récents ou plus anciens d'abord.
 - **Résultats en arborescence (vue par défaut)** : l'accueil range les documents trouvés dans leurs dossiers, avec le nombre de documents par dossier ; l'arbre suit la frappe et les filtres en temps réel. Sans recherche ni filtre, il montre toute la structure des partages. L'affichage dépend du contexte : à l'accueil, tout est replié (le triangle ▸ déplie un dossier : ses sous-dossiers et ses fichiers) ; un clic sur le nom d'un dossier y entre, comme dans l'explorateur (ses fichiers, ses sous-dossiers repliés, ⬆ pour remonter) ; une recherche déplie tout, fichiers compris. Les dossiers à un seul sous-dossier sont fusionnés (« Documents › Infra › Réseau »), chaque nom restant cliquable. Une vue Liste, avec extraits surlignés, reste disponible.
 - **Chemins lisibles** : chaque résultat de la liste et des suggestions affiche son chemin en priorisant les 4 premiers dossiers (pôle, thème…) et le dossier final ; les dossiers intermédiaires se réduisent en « … » si la place manque ; chemin complet au survol.
 - **Filtres actifs visibles** au-dessus des résultats, retirables ; compteurs des tags recalculés à chaque recherche, les tags menant à zéro résultat sont grisés.
 - **Personnes** : auteur et dernier modificateur (propriétés Office / PDF), propriétaire du fichier.
 - **Droits d'accès** : utilisateurs et groupes autorisés (ou refusés) sur chaque fichier, lus dans les droits NTFS et traduits comme dans l'onglet Sécurité (Lecture, Modification, Contrôle total…), avec leur origine (héritée ou propre au fichier). Relus à chaque indexation.
+- **Chacun ne voit que ce qu'il peut lire** : la personne est identifiée par sa session Windows (sans mot de passe à saisir) et les résultats, suggestions, compteurs, fiches et fichiers sont filtrés selon ses droits NTFS (et ceux du partage, quand ils sont lisibles). Voir [Droits d'accès et identification](#droits-daccès-et-identification).
 - **Tags automatiques** par dictionnaire de mots-clés ([`taxonomie.toml`](taxonomie.toml)) : logiciel, secteur (identité, soins, facturation…), type de note.
-- **Code documentaire** détecté dans l'en-tête ou le début du texte (format `DSI-INFRA-NT-001-v02`).
+- **Code documentaire** détecté dans le nom du fichier, sinon dans l'en-tête ou le début du texte (`DSI-INFRA-NT-001-v02`, `NT.OC.GSI.01`, `NT_OC_GSI_01` : segments séparés par `-`, `.` ou `_`).
 - **OCR** des PDF scannés et des images (captures d'écran, photos). Les images sans texte lisible (photos, dessins, schémas) sont détectées et leur « texte » OCR, qui ne serait que du bruit, est écarté.
 - **Doublons** : la fiche d'un document signale ses copies identiques ailleurs dans les partages.
 - **Indexation incrémentale** : seuls les fichiers nouveaux ou modifiés sont relus ; les fichiers supprimés disparaissent des résultats. Un fichier renommé ou déplacé est reconnu à son empreinte : il garde sa fiche, son texte OCR et ses tags manuels.
@@ -132,7 +133,7 @@ Tout fonctionne nativement sous Windows Server, sans Docker.
 
 Le compte qui exécute l'indexation doit avoir un **accès en lecture** aux partages à indexer (idéalement un compte de service dédié, en lecture seule). Pour afficher les droits d'accès, il doit aussi pouvoir lire les autorisations des fichiers (droit « Lire les autorisations », inclus dans la lecture standard) et joindre un contrôleur de domaine pour traduire les SID en noms de comptes.
 
-> Les droits d'accès sont **affichés** à titre d'information : en l'absence d'authentification, la version actuelle ne filtre pas encore les résultats selon les droits de la personne connectée (prévu avec l'authentification Active Directory).
+Ces droits servent aussi à **filtrer** ce que chacun voit (voir [Droits d'accès et identification](#droits-daccès-et-identification)) : un document dont les droits n'ont pas pu être lus est masqué, sauf aux administrateurs de la GED.
 
 ## Installation
 
@@ -213,6 +214,28 @@ exclure = [
 
 Les tags automatiques se règlent dans [`taxonomie.toml`](taxonomie.toml) : un libellé, une liste de mots-clés (préfixe `titre:` pour un mot-clé qui ne compte que dans le nom ou le titre du document). Après modification, `ged recalculer` réapplique les règles sans relire les fichiers. Pour la construire : `ged analyser` produit un rapport (noms de dossiers, mots fréquents des noms de fichiers, couverture des tags actuels, propositions), sans le texte des documents ; [`CLAUDE.md`](CLAUDE.md) décrit la marche à suivre avec Claude Code, si la politique du groupe l'autorise. **La liste fournie est un premier jet à compléter avec les pôles** (logiciels métier réels, secteurs).
 
+### Droits d'accès et identification
+
+```toml
+[authentification]
+active = true                 # false : pas d'identification, tout le monde voit tout (démo, poste isolé)
+protocole = "NTLM"            # ou "Negotiate" (Kerberos), voir ci-dessous
+groupes_admin = ['CLINIQUES\GED-Admins']   # voient tous les documents et l'état de l'index
+duree_session_heures = 8
+```
+
+**Identification** : à la première visite, le serveur demande au navigateur de s'identifier ; Edge et Chrome envoient alors la session Windows ouverte, sans rien demander, si l'adresse de la GED est dans la zone « Intranet local » (c'est le cas d'un nom court comme `http://vm-ged:8000` ; pour un nom complet ou une adresse IP, l'ajouter par GPO : *Liste des attributions de sites aux zones*). Windows vérifie l'identité auprès du contrôleur de domaine et fournit la liste complète des groupes de la personne, groupes imbriqués compris. Un cookie de session évite ensuite de recommencer à chaque page ; un changement de groupe est pris en compte à la session suivante (après `duree_session_heures`, ou un redémarrage du serveur). Le compte connecté s'affiche à droite du bandeau.
+
+**NTLM ou Kerberos** : NTLM fonctionne quel que soit le compte qui fait tourner le serveur. Kerberos (`Negotiate`) est plus sûr, mais il exige que ce compte porte le SPN `HTTP/<nom du serveur>` : serveur lancé en service sous le compte machine (*Service réseau*), ou SPN déclaré par un administrateur du domaine (`setspn -S HTTP/vm-ged CLINIQUES\svc-ged`). Sinon le navigateur obtient un ticket que le serveur ne sait pas lire et l'identification échoue.
+
+**Ce que chacun voit** : un document est visible si la personne peut **lire** le fichier d'après ses droits NTFS, évalués comme Windows le fait (la première entrée qui concerne l'un de ses groupes décide : un refus explicite l'emporte sur une autorisation, une autorisation explicite sur un refus hérité). Le filtre s'applique partout : résultats, arborescence, suggestions, compteurs de tags et de dates, doublons, fiche et téléchargement du fichier (un document hors de ses droits répond « Document inconnu », comme s'il n'existait pas). La page **État de l'index** est réservée aux administrateurs de la GED.
+
+**Droits des partages** : Windows applique aussi les droits du partage réseau (le plus restrictif l'emporte). Ils sont relus à chaque indexation, mais seul un administrateur du serveur de fichiers peut les lire : sinon, un avertissement s'affiche et seuls les droits NTFS sont appliqués (cas habituel : partage ouvert à « Tout le monde », sécurité portée par NTFS).
+
+**Limites** : les droits sont ceux de la dernière indexation (une modification de droits est prise en compte au passage suivant de `ged indexer`) ; les entrées de droits conditionnelles (contrôle d'accès dynamique) sont ignorées ; la correction orthographique s'appuie sur le vocabulaire de tous les documents, mais ne propose que des mots présents dans des documents visibles.
+
+> **Mise à jour d'une installation existante** : lancer `ged init-db` (nouvelles colonnes), puis `ged indexer` : les fichiers inchangés ne sont pas relus, seuls leurs droits sont mis à jour. D'ici là, les documents n'ont pas encore de droits enregistrés et restent masqués, sauf aux administrateurs de la GED.
+
 ## Utilisation
 
 ```powershell
@@ -232,7 +255,7 @@ Dans l'interface :
 - affiner avec les filtres à gauche ;
 - **Ouvrir** affiche le fichier (PDF, images) ou le télécharge (Word, Excel) ;
 - **Copier le chemin** donne le chemin réseau à coller dans l'explorateur Windows ;
-- la page **État de l'index** liste les sources, le volume indexé et les erreurs de lecture.
+- la page **État de l'index** (administrateurs de la GED) liste les sources, le volume indexé et les erreurs de lecture.
 
 ## Mise en production
 
@@ -246,8 +269,9 @@ Sur la VM Windows :
    ```
 3. **Serveur web** permanent : service Windows (par exemple via [NSSM](https://nssm.cc/) ou [WinSW](https://github.com/winsw/winsw)) lançant `uv run ged serveur`.
 4. Ouvrir le port dans le pare-feu Windows pour le réseau interne et le VPN.
+5. **Identification** : renseigner `groupes_admin`, vérifier que l'adresse de la GED est en zone « Intranet local » sur les postes (voir [Droits d'accès et identification](#droits-daccès-et-identification)).
 
-> ⚠️ Version actuelle : **pas d'authentification**. À n'exposer que sur le réseau interne. L'authentification Active Directory est prévue (voir feuille de route).
+> ⚠️ L'interface est servie en HTTP : le cookie de session et les documents circulent en clair sur le réseau. À n'exposer que sur le réseau interne et le VPN ; pour aller plus loin, placer un proxy HTTPS devant.
 
 ## Outil d'inventaire
 
@@ -278,9 +302,10 @@ ged-dsi/
 │   ├── recherche.py     # requêtes plein texte, filtres, correction, suggestions
 │   ├── extraits.py      # extraits surlignés des résultats
 │   ├── arborescence.py  # arbre des résultats, outils sur les chemins
-│   ├── droits.py        # propriétaire et droits NTFS (pywin32)
+│   ├── droits.py        # propriétaire et droits NTFS, droits des partages (pywin32)
+│   ├── acces.py         # qui peut voir quoi : filtre SQL selon les droits de la personne
 │   ├── texte.py         # normalisation, détection du code documentaire
-│   └── web/             # application FastAPI, gabarits, CSS
+│   └── web/             # application FastAPI, identification Windows (authentification.py), gabarits, CSS
 ├── outils/inventaire/   # script PowerShell d'état des lieux
 ├── outils/installation/ # installation sans droits admin et commandes du quotidien
 ├── outils/demo/         # documents fictifs et captures d'écran du README
@@ -297,7 +322,7 @@ ged-dsi/
 - [x] **Phase 1** — Indexation en lecture seule, OCR, recherche web avec filtres et tags automatiques
 - [ ] **Phase 2** — Dépôt de nouveaux documents : dossier « À classer », OCR, proposition de code et de tags, validation humaine, copie dans l'arborescence GED
 - [ ] **Phase 3** — Conformité à la procédure des procédures : modèle `.dotx` à champs, génération des nouvelles notes, contrôle de structure, dates de révision
-- [ ] **Phase 4** — Authentification Active Directory, tags manuels dans l'interface, liens avec la base de connaissances EasyVista, détection des versions, IA (selon la politique du groupe)
+- [ ] **Phase 4** — ~~Authentification Windows et filtrage selon les droits NTFS~~ (fait), tags manuels dans l'interface, liens avec la base de connaissances EasyVista, détection des versions, IA (selon la politique du groupe)
 
 ## Développement
 

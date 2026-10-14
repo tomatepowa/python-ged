@@ -11,8 +11,9 @@
     <a class="logo" href="/">GED <span>DSI</span></a>
     <nav>
       <a href="/">Recherche</a>
-      <a href="/stats">État de l'index</a>
+      {% if request.state.lecteur.admin %}<a href="/stats">État de l'index</a>{% endif %}
     </nav>
+    {% if request.state.lecteur.compte %}<span class="compte" title="Documents affichés selon vos droits Windows">{{ request.state.lecteur.compte }}</span>{% endif %}
   </header>
   <main>
     {% block contenu %}{% endblock %}

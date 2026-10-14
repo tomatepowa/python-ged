@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 
 import psycopg
 
+from ged.acces import TOUT, FiltreAcces
 from ged.arborescence import dossier_parent, fil_ariane
 from ged.extraits import construire_motif, extraire
 from ged.texte import normaliser
@@ -111,7 +112,7 @@ CANDIDATS_PAR_MOT = 5
 COMBINAISONS_MAX = 25
 
 
-def corriger(conn: psycopg.Connection, mots: list[str]) -> list[str] | None:
+def corriger(conn: psycopg.Connection, mots: list[str], acces: FiltreAcces) -> list[str] | None:
     """Corrige les mots absents du corpus. None si rien à corriger.
 
     Un mot mal tapé a souvent plusieurs voisins aussi proches ("vante" : vente, santé, vant...).
@@ -148,7 +149,7 @@ def corriger(conn: psycopg.Connection, mots: list[str]) -> list[str] | None:
         return None
 
     combinaisons = list(islice(product(*candidats), COMBINAISONS_MAX))
-    nombres = compter(conn, [requete_saisie([mot for mot, _ in c]) for c in combinaisons])
+    nombres = compter(conn, [requete_saisie([mot for mot, _ in c]) for c in combinaisons], acces)
     meilleure, meilleur_score = None, None
     for combinaison, nb in zip(combinaisons, nombres):
         if not nb:
@@ -160,15 +161,15 @@ def corriger(conn: psycopg.Connection, mots: list[str]) -> list[str] | None:
     return meilleure
 
 
-def compter(conn: psycopg.Connection, requetes: list[str]) -> list[int]:
-    """Nombre de documents correspondant à chaque requête tsquery, en un seul aller-retour."""
+def compter(conn: psycopg.Connection, requetes: list[str], acces: FiltreAcces) -> list[int]:
+    """Nombre de documents visibles correspondant à chaque requête tsquery, en un seul aller-retour."""
     if not requetes:
         return []
     lignes = conn.execute(
         "SELECT (SELECT count(*) FROM document d WHERE d.supprime_le IS NULL "
-        "        AND d.recherche @@ to_tsquery('ged_fr', r.q)) AS nb "
-        "FROM unnest(%s::text[]) WITH ORDINALITY AS r(q, rang) ORDER BY r.rang",
-        (requetes,),
+        f"        AND d.recherche @@ to_tsquery('ged_fr', r.q) AND {acces.sql}) AS nb "
+        "FROM unnest(%(requetes)s::text[]) WITH ORDINALITY AS r(q, rang) ORDER BY r.rang",
+        {"requetes": requetes, **acces.parametres},
     ).fetchall()
     return [ligne["nb"] for ligne in lignes]
 
@@ -178,10 +179,10 @@ def distance_max(mot: str) -> int:
     return 1 if len(mot) <= 4 else 2 if len(mot) <= 8 else 3
 
 
-def rechercher(conn: psycopg.Connection, filtres: Filtres, tous: bool = False) -> Resultats:
+def rechercher(conn: psycopg.Connection, filtres: Filtres, acces: FiltreAcces, tous: bool = False) -> Resultats:
     """Recherche paginée (tous=False) ou liste complète des documents trouvés, sans extraits,
-    pour la vue arborescence (tous=True)."""
-    executer = partial(_executer, conn, filtres, tous=tous)
+    pour la vue arborescence (tous=True). Seuls les documents que `acces` laisse voir comptent."""
+    executer = partial(_executer, conn, filtres, acces=acces, tous=tous)
     q = filtres.q.strip()
     if not q:
         return executer("recents")
@@ -194,7 +195,7 @@ def rechercher(conn: psycopg.Connection, filtres: Filtres, tous: bool = False) -
     else:
         # Fautes de frappe : on cherche d'abord la version corrigée, sinon des résultats
         # parasites sur les mots mal orthographiés masqueraient les bons documents
-        correction = corriger(conn, mots)
+        correction = corriger(conn, mots, acces)
         if correction:
             resultats = executer("corrige", parametre=requete_saisie(correction), surligner=correction)
             if resultats.total:
@@ -209,14 +210,15 @@ def rechercher(conn: psycopg.Connection, filtres: Filtres, tous: bool = False) -
 
 def _executer(
     conn: psycopg.Connection, filtres: Filtres, mode: str, parametre: str | None = None,
-    surligner: list[str] | None = None, tous: bool = False,
+    surligner: list[str] | None = None, acces: FiltreAcces = TOUT, tous: bool = False,
 ) -> Resultats:
     parametres: dict = {
         "p": parametre,
         "limite": PAR_PAGE,
         "decalage": (max(filtres.page, 1) - 1) * PAR_PAGE,
+        **acces.parametres,
     }
-    conditions = ["d.supprime_le IS NULL"]
+    conditions = ["d.supprime_le IS NULL", acces.sql]
 
     requete_ts = {
         "exact": "websearch_to_tsquery('ged_fr', %(p)s)",
@@ -351,7 +353,7 @@ COMPLETIONS_MAX = 6
 DOCUMENTS_SUGGERES_MAX = 6
 
 
-def suggerer(conn: psycopg.Connection, q: str) -> dict:
+def suggerer(conn: psycopg.Connection, q: str, acces: FiltreAcces) -> dict:
     """Suggestions pendant la frappe, façon moteur de recherche : quelques millisecondes.
 
     - complétions : le dernier mot complété par les mots du corpus les plus fréquents
@@ -373,18 +375,20 @@ def suggerer(conn: psycopg.Connection, q: str) -> dict:
             (dernier.replace("%", "").replace("_", "") + "%", COMPLETIONS_MAX * 4),
         )
     ]
-    if debut and candidats:
+    # Le vocabulaire vient de tous les documents : quand l'accès est restreint, on ne propose que
+    # les mots présents dans des documents visibles (sinon un mot trahirait un document masqué)
+    if (debut or acces is not TOUT) and candidats:
         # Plusieurs mots : on classe par nombre de documents contenant toute la combinaison
         # ("promesse v" -> "promesse vente" avant "promesse virement")
-        nombres = compter(conn, [" & ".join(debut + [mot]) for mot in candidats])
+        nombres = compter(conn, [" & ".join(debut + [mot]) for mot in candidats], acces)
         candidats = [mot for mot, nb in sorted(zip(candidats, nombres), key=lambda c: -c[1]) if nb]
     completions = [" ".join(debut + [mot]) for mot in candidats[:COMPLETIONS_MAX]]
 
     documents = conn.execute(
-        """
+        f"""
         SELECT d.id, d.nom, d.chemin_relatif, d.famille, s.pole
         FROM document d JOIN source s ON s.id = d.source_id
-        WHERE d.supprime_le IS NULL
+        WHERE d.supprime_le IS NULL AND {acces.sql}
           AND ged_normaliser(d.nom || ' ' || coalesce(d.titre, '')) LIKE ALL (%(motifs)s)
         ORDER BY similarity(ged_normaliser(d.nom), %(q)s) DESC, d.modifie_le DESC
         LIMIT %(limite)s
@@ -393,6 +397,7 @@ def suggerer(conn: psycopg.Connection, q: str) -> dict:
             "motifs": ["%" + m.replace("%", "").replace("_", "") + "%" for m in mots],
             "q": " ".join(mots),
             "limite": DOCUMENTS_SUGGERES_MAX,
+            **acces.parametres,
         },
     ).fetchall()
     for doc in documents:
@@ -421,22 +426,25 @@ def sous_titre(titre: str | None, nom: str) -> str | None:
     return titre
 
 
-def facettes(conn: psycopg.Connection) -> dict:
-    """Valeurs disponibles pour les filtres, avec le nombre de documents."""
-    actifs = "d.supprime_le IS NULL"
+def facettes(conn: psycopg.Connection, acces: FiltreAcces) -> dict:
+    """Valeurs disponibles pour les filtres, avec le nombre de documents visibles."""
+    actifs = f"d.supprime_le IS NULL AND {acces.sql}"
     return {
         "poles": conn.execute(
             f"SELECT s.pole AS valeur, count(*) AS nb FROM document d JOIN source s ON s.id = d.source_id "
-            f"WHERE {actifs} GROUP BY s.pole ORDER BY s.pole"
+            f"WHERE {actifs} GROUP BY s.pole ORDER BY s.pole",
+            acces.parametres,
         ).fetchall(),
         "familles": conn.execute(
             f"SELECT famille AS valeur, count(*) AS nb FROM document d WHERE {actifs} "
-            f"GROUP BY famille ORDER BY nb DESC"
+            f"GROUP BY famille ORDER BY nb DESC",
+            acces.parametres,
         ).fetchall(),
         "tags": conn.execute(
             f"SELECT t.id, t.categorie, t.libelle, count(*) AS nb FROM tag t "
             f"JOIN document_tag dt ON dt.tag_id = t.id JOIN document d ON d.id = dt.document_id "
-            f"WHERE {actifs} GROUP BY t.id ORDER BY t.categorie, t.libelle"
+            f"WHERE {actifs} GROUP BY t.id ORDER BY t.categorie, t.libelle",
+            acces.parametres,
         ).fetchall(),
     }
 

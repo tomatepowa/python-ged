@@ -107,3 +107,26 @@ ALTER TABLE document ADD COLUMN IF NOT EXISTS dernier_modificateur text;
 ALTER TABLE document ADD COLUMN IF NOT EXISTS proprietaire text;
 -- Droits NTFS : [{"compte": "DOMAINE\groupe", "droits": "Lecture", "refus": false, "herite": true}, ...]
 ALTER TABLE document ADD COLUMN IF NOT EXISTS droits jsonb;
+
+-- Filtrage selon les droits NTFS de la personne connectée (voir ged/acces.py).
+-- SID des comptes et groupes autorisés à lire le fichier (NULL : droits illisibles, document masqué)
+ALTER TABLE document ADD COLUMN IF NOT EXISTS acces_sids text[];
+-- Entrées de lecture dans l'ordre de la DACL, seulement s'il y a un refus : [["S-1-5-...", "A" | "R"], ...]
+ALTER TABLE document ADD COLUMN IF NOT EXISTS acces_ordre jsonb;
+CREATE INDEX IF NOT EXISTS document_acces_sids_idx ON document USING gin (acces_sids);
+-- Droits du partage réseau de la source, même format que acces_ordre (NULL : non lus)
+ALTER TABLE source ADD COLUMN IF NOT EXISTS acces_partage jsonb;
+
+-- Comme Windows : la première entrée qui concerne la personne décide (refus ou autorisation).
+-- `sids` : groupes actifs de la personne ; `sids_refus` : en plus, ses groupes « refus seulement ».
+CREATE OR REPLACE FUNCTION ged_peut_lire(acl jsonb, sids text[], sids_refus text[]) RETURNS boolean
+    LANGUAGE sql IMMUTABLE PARALLEL SAFE
+    AS $$
+    SELECT coalesce((
+        SELECT e ->> 1 = 'A'
+        FROM jsonb_array_elements(acl) WITH ORDINALITY AS a(e, rang)
+        WHERE (e ->> 1 = 'A' AND e ->> 0 = ANY(sids)) OR (e ->> 1 = 'R' AND e ->> 0 = ANY(sids_refus))
+        ORDER BY rang
+        LIMIT 1
+    ), false)
+    $$;

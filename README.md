@@ -2,11 +2,9 @@
 
 > Moteur de recherche documentaire pour les partages réseau de la DSI : retrouver une note technique en quelques mots-clés, même à 3 h du matin en astreinte.
 
-GED DSI indexe **en lecture seule** les dossiers documentaires existants (partages du NAS), en extrait le texte (Word, PDF, Excel, PowerPoint, mails, scans via OCR) et propose une interface web de recherche avec des filtres par pôle, type de document et tags (logiciel, secteur, type de note).
+GED DSI indexe **en lecture seule** les dossiers documentaires existants (partages du NAS), en extrait le texte (Word, PDF, Excel, PowerPoint, mails, scans via OCR) et propose une recherche web avec filtres par pôle, type de document, tags, date et personne. Chacun n'y voit que les documents que ses droits Windows lui permettent d'ouvrir.
 
 Les fichiers ne sont **ni déplacés, ni modifiés** : l'arborescence actuelle reste la référence, la GED se pose par-dessus.
-
----
 
 ## Aperçu
 
@@ -19,75 +17,60 @@ Les fichiers ne sont **ni déplacés, ni modifiés** : l'arborescence actuelle r
   <img src="docs/captures/accueil.png" alt="Accueil en arborescence">
 </picture>
 
-**Recherche : les documents trouvés restent rangés dans leurs dossiers**
-
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/captures/recherche-arborescence-clair.png">
-  <img src="docs/captures/recherche-arborescence.png" alt="Résultats en arborescence">
-</picture>
-
-**Vue liste : extraits surlignés, code documentaire et tags**
+**Vue liste : extraits surlignés, code documentaire, tags, aperçu des dates**
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/captures/recherche-liste-clair.png">
   <img src="docs/captures/recherche-liste.png" alt="Résultats en liste">
 </picture>
 
-**Suggestions pendant la frappe**
+<details>
+<summary><b>Plus de captures</b> : recherche en arborescence, suggestions, fiche d'un document</summary>
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/captures/recherche-arborescence-clair.png">
+  <img src="docs/captures/recherche-arborescence.png" alt="Résultats en arborescence">
+</picture>
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/captures/suggestions-clair.png">
   <img src="docs/captures/suggestions.png" alt="Suggestions">
 </picture>
 
-**Fiche d'un document : emplacement, personnes, droits NTFS, texte extrait**
-
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/captures/document-clair.png">
   <img src="docs/captures/document.png" alt="Fiche document">
 </picture>
 
----
-
-## Sommaire
-
-- [Aperçu](#aperçu)
-- [Fonctionnalités](#fonctionnalités)
-- [Architecture](#architecture)
-- [Prérequis](#prérequis)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Utilisation](#utilisation)
-- [Mise en production](#mise-en-production)
-- [Outil d'inventaire](#outil-dinventaire)
-- [Structure du projet](#structure-du-projet)
-- [Feuille de route](#feuille-de-route)
-- [Développement](#développement)
-
----
+</details>
 
 ## Fonctionnalités
 
-- **Recherche instantanée** : les résultats se mettent à jour à chaque lettre, sans attente ; le dernier mot tapé est traité comme un début de mot (`imprim` → imprimante).
-- **Suggestions façon moteur de recherche** : sous la barre, complétions tirées du vocabulaire des documents (« promesse v » → « promesse vente ») et documents dont le nom correspond, ouvrables directement ; navigation au clavier (↑ ↓ Entrée Échap).
-- **Recherche plein texte en français** : insensible aux accents et aux pluriels (« procédures » trouve « procedure »), opérateurs de recherche web (`"phrase exacte"`, `-exclure`, `OR`).
-- **Correction des fautes de frappe** à partir du vocabulaire réel des documents (« promese vante » → « promesse vente »), puis recherche approchante sur les noms de fichiers.
-- **Classement** : un document dont le nom ou le titre contient les mots cherchés passe devant ceux qui les citent seulement dans le texte.
-- **Extraits surlignés** : chaque résultat montre le passage où apparaissent les mots cherchés.
-- **Filtres** : pôle (Métier, Infra, BI, ITO…), type de fichier, tags (un clic sur un tag affiche tous les documents qui le portent), dossier.
-- **Frise des dates** sous la barre de recherche (ouverte d'un clic sur son aperçu, à droite du champ de recherche, et d'office quand une période est choisie) : courbe du nombre de documents trouvés par année de dernière modification (par mois sur 2 ans ou moins). Un clic sur une colonne filtre sur cette période, les deux poignées choisissent un intervalle. La date de création n'est pas utilisée : une copie ou une migration de NAS la remet à la date du transfert. La vue Liste se trie par pertinence, plus récents ou plus anciens d'abord.
-- **Résultats en arborescence (vue par défaut)** : l'accueil range les documents trouvés dans leurs dossiers, avec le nombre de documents par dossier ; l'arbre suit la frappe et les filtres en temps réel. Sans recherche ni filtre, il montre toute la structure des partages. L'affichage dépend du contexte : à l'accueil, tout est replié (le triangle ▸ déplie un dossier : ses sous-dossiers et ses fichiers) ; un clic sur le nom d'un dossier y entre, comme dans l'explorateur (ses fichiers, ses sous-dossiers repliés, ⬆ pour remonter) ; une recherche déplie tout, fichiers compris. Les dossiers à un seul sous-dossier sont fusionnés (« Documents › Infra › Réseau »), chaque nom restant cliquable. Une vue Liste, avec extraits surlignés, reste disponible.
-- **Chemins lisibles** : chaque résultat de la liste et des suggestions affiche son chemin en priorisant les 4 premiers dossiers (pôle, thème…) et le dossier final ; les dossiers intermédiaires se réduisent en « … » si la place manque ; chemin complet au survol.
-- **Filtres actifs visibles** au-dessus des résultats, retirables ; compteurs des tags recalculés à chaque recherche, les tags menant à zéro résultat sont grisés.
-- **Personnes** : auteur et dernier modificateur (propriétés Office / PDF), propriétaire du fichier.
-- **Droits d'accès** : utilisateurs et groupes autorisés (ou refusés) sur chaque fichier, lus dans les droits NTFS et traduits comme dans l'onglet Sécurité (Lecture, Modification, Contrôle total…), avec leur origine (héritée ou propre au fichier). Relus à chaque indexation.
-- **Chacun ne voit que ce qu'il peut lire** : la personne est identifiée par sa session Windows (sans mot de passe à saisir) et les résultats, suggestions, compteurs, fiches et fichiers sont filtrés selon ses droits NTFS (et ceux du partage, quand ils sont lisibles). Voir [Droits d'accès et identification](#droits-daccès-et-identification).
-- **Tags automatiques** par dictionnaire de mots-clés ([`taxonomie.toml`](taxonomie.toml)) : logiciel, secteur (identité, soins, facturation…), type de note.
-- **Code documentaire** détecté dans le nom du fichier, sinon dans l'en-tête ou le début du texte (`DSI-INFRA-NT-001-v02`, `NT.OC.GSI.01`, `NT_OC_GSI_01` : segments séparés par `-`, `.` ou `_`).
-- **OCR** des PDF scannés et des images (captures d'écran, photos). Les images sans texte lisible (photos, dessins, schémas) sont détectées et leur « texte » OCR, qui ne serait que du bruit, est écarté.
-- **Doublons** : la fiche d'un document signale ses copies identiques ailleurs dans les partages.
-- **Indexation incrémentale** : seuls les fichiers nouveaux ou modifiés sont relus ; les fichiers supprimés disparaissent des résultats. Un fichier renommé ou déplacé est reconnu à son empreinte : il garde sa fiche, son texte OCR et ses tags manuels.
-- **Sécurité** : coffres KeePass, clés privées et certificats (`.kdbx`, `.pfx`, `.pem`…) ne sont jamais indexés ; les corbeilles et instantanés du NAS sont ignorés, tout comme les programmes et bibliothèques (`.exe`, `.dll`, `.jar`, `.msi`…). Les dossiers listés dans `exclure` (config) ne sont pas parcourus du tout : utile pour les dossiers d'applications.
+**Recherche**
+- **Instantanée** : résultats à chaque lettre, le dernier mot est un début de mot (`imprim` → imprimante).
+- **Suggestions** sous la barre : complétions tirées du vocabulaire des documents et documents dont le nom correspond ; clavier ↑ ↓ Entrée Échap.
+- **Plein texte en français**, insensible aux accents et aux pluriels ; syntaxe web (`"phrase exacte"`, `-exclure`, `OR`).
+- **Fautes de frappe corrigées** d'après le vocabulaire réel (« promese vante » → « promesse vente »), puis recherche approchante sur les noms de fichiers.
+- **Classement** : les mots présents dans le nom ou le titre comptent plus que dans le texte ; extrait surligné pour chaque résultat.
+
+**Navigation et filtres**
+- **Arborescence** (vue par défaut) : les documents trouvés restent rangés dans leurs dossiers, avec leur nombre ; un clic sur un dossier y entre comme dans l'explorateur. Vue **liste** au choix, triée par pertinence ou par date.
+- **Filtres** : pôle, type de fichier, tags, dossier, **période** (aperçu de la courbe des dates dans la barre de recherche, frise complète d'un clic) et **personne** (un clic sur un auteur, un dernier modificateur ou un propriétaire). Filtres actifs rappelés au-dessus des résultats, compteurs recalculés à chaque recherche.
+- **Chemins lisibles** : début et dossier final toujours visibles, milieu réduit en « … » si la place manque.
+
+**Documents**
+- **Fiche** : emplacement, code documentaire, tags, auteur et dernier modificateur (propriétés Office / PDF), propriétaire, droits NTFS traduits comme dans l'onglet Sécurité, copies identiques ailleurs, texte extrait.
+- **Tags automatiques** par mots-clés ([`taxonomie.toml`](taxonomie.toml)) : logiciel, secteur, type de note.
+- **Code documentaire** détecté dans le nom du fichier, sinon en tête du texte (`DSI-INFRA-NT-001-v02`, `NT.OC.GSI.01`, `NT_OC_GSI_01`).
+- **OCR** des PDF scannés et des images ; le « texte » des photos et schémas sans écriture est écarté.
+
+**Accès**
+- **Identification par la session Windows**, sans mot de passe à saisir, et **filtrage selon les droits NTFS** partout : résultats, suggestions, compteurs, fiches, fichiers. Voir [Droits d'accès et identification](#droits-daccès-et-identification).
+- **Page « Mes groupes »** (clic sur son nom) : ses documents (créés, modifiés, possédés) et ses groupes Windows, en arbre quand l'Active Directory répond. La fiche d'un document dit quels groupes en donnent l'accès.
+
+**Indexation**
+- **Incrémentale** : seuls les fichiers nouveaux ou modifiés sont relus, les droits sont relus à chaque passage. Un fichier renommé ou déplacé est reconnu à son empreinte et garde sa fiche, son OCR et ses tags.
+- **Jamais indexés** : coffres KeePass, clés et certificats (`.kdbx`, `.pfx`, `.pem`…), programmes (`.exe`, `.dll`, `.msi`…), corbeilles et instantanés du NAS, dossiers listés dans `exclure`.
 
 ## Architecture
 
@@ -97,95 +80,80 @@ Les fichiers ne sont **ni déplacés, ni modifiés** : l'arborescence actuelle r
             │
             ▼
   ┌───────────────────────┐   tâche planifiée (nuit)
-  │  ged indexer          │   parcours → extraction texte → tags → base
+  │  ged indexer          │   parcours → texte → tags → droits NTFS → base
   │  ged ocr              │   PDF scannés et images → texte
   └──────────┬────────────┘
              ▼
   ┌───────────────────────┐
-  │  PostgreSQL           │   recherche plein texte (config. ged_fr :
-  │                       │   français + sans accents), pg_trgm
+  │  PostgreSQL           │   recherche plein texte (français, sans accents)
   └──────────┬────────────┘
              ▼
-  ┌───────────────────────┐
-  │  ged serveur          │   FastAPI + Jinja2, http://serveur:8000
-  └───────────────────────┘   accessible en VPN pour l'astreinte
+  ┌───────────────────────┐   identification Windows (NTLM / Kerberos),
+  │  ged serveur          │   filtrage selon les droits de la personne
+  └───────────────────────┘   http://serveur:8000, accessible en VPN
 ```
 
 | Composant | Choix | Pourquoi |
 |---|---|---|
 | Langage | Python 3.11+ | Meilleur écosystème pour l'extraction de documents et l'OCR |
-| Base | PostgreSQL 16+ | Recherche plein texte française intégrée, pas de moteur supplémentaire à maintenir |
+| Base | PostgreSQL 16+ | Recherche plein texte française intégrée, pas de moteur à maintenir à côté |
 | PDF / OCR | PyMuPDF (Tesseract intégré) | Pas d'exécutable OCR à installer, seulement un fichier de langue |
 | Web | FastAPI + Jinja2 | Pages rendues côté serveur, aucune dépendance JavaScript externe |
-| Anciens formats | LibreOffice (optionnel) | Conversion `.doc` / `.xls` / `.ppt` |
+| Windows | pywin32 | Droits NTFS, identification SSPI, annuaire Active Directory |
 
-Tout fonctionne nativement sous Windows Server, sans Docker.
-
-## Prérequis
-
-| Logiciel | Obligatoire | Remarque |
-|---|---|---|
-| [Python 3.11+](https://www.python.org/downloads/windows/) | oui | |
-| [uv](https://docs.astral.sh/uv/) | recommandé | gestionnaire de projet Python, installable sans droits admin |
-| [PostgreSQL 16+](https://www.postgresql.org/download/windows/) | oui | extensions `unaccent`, `pg_trgm` et `fuzzystrmatch` (incluses dans l'installeur standard) |
-| Fichier de langue `fra.traineddata` | pour l'OCR | à récupérer sur [tesseract-ocr/tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast) (ou `tessdata_best`, plus précis et plus lent) |
-| [LibreOffice](https://fr.libreoffice.org/) | non | uniquement pour lire les anciens `.doc`, `.xls`, `.ppt` |
-
-Le compte qui exécute l'indexation doit avoir un **accès en lecture** aux partages à indexer (idéalement un compte de service dédié, en lecture seule). Pour afficher les droits d'accès, il doit aussi pouvoir lire les autorisations des fichiers (droit « Lire les autorisations », inclus dans la lecture standard) et joindre un contrôleur de domaine pour traduire les SID en noms de comptes.
-
-Ces droits servent aussi à **filtrer** ce que chacun voit (voir [Droits d'accès et identification](#droits-daccès-et-identification)) : un document dont les droits n'ont pas pu être lus est masqué, sauf aux administrateurs de la GED.
+**Pourquoi pas Docker ?** La GED tourne nativement sur une VM Windows, et une bonne part de son travail en dépend : lire les partages avec un compte du domaine, lire les droits NTFS, traduire les SID en noms, identifier les personnes par NTLM / Kerberos (SSPI), lire les groupes dans l'Active Directory. Dans un conteneur Linux, tout cela serait à réécrire (montage SMB avec identifiants stockés, Samba, LDAP, keytab Kerberos créée par un admin AD) ; un conteneur Windows ne rejoint pas le domaine sans gMSA (admin AD) et demande un hôte Windows Server. Installer Docker exige en plus des droits admin, et Docker Desktop est payant au-delà de 250 salariés. `uv` et le script d'installation donnent déjà un déploiement reproductible sans droits admin (versions figées par `uv.lock`). Docker reste pratique pour un **PostgreSQL de développement ou de test**.
 
 ## Installation
 
-```powershell
-git clone <url-du-depot> ged-dsi
-cd ged-dsi
-uv sync
-```
+| Logiciel | Obligatoire | Remarque |
+|---|---|---|
+| [Python 3.11+](https://www.python.org/downloads/windows/) et [uv](https://docs.astral.sh/uv/) | oui | uv s'installe sans droits admin |
+| [PostgreSQL 16+](https://www.postgresql.org/download/windows/) | oui | extensions `unaccent`, `pg_trgm`, `fuzzystrmatch` (incluses dans l'installeur) |
+| `fra.traineddata` | pour l'OCR | [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast) (ou `tessdata_best`, plus précis et plus lent) |
+| [LibreOffice](https://fr.libreoffice.org/) | non | pour les anciens `.doc`, `.xls`, `.ppt` |
 
-Créer la base (à adapter, en tant qu'administrateur PostgreSQL) :
+Le compte qui indexe doit pouvoir **lire** les partages (idéalement un compte de service en lecture seule) et joindre un contrôleur de domaine pour traduire les SID en noms de comptes.
 
-```sql
-CREATE ROLE ged LOGIN PASSWORD 'mot-de-passe-solide';
-CREATE DATABASE ged OWNER ged ENCODING 'UTF8';
-```
+### Poste de test, sans droits administrateur
 
-Puis initialiser le schéma :
-
-```powershell
-copy config.exemple.toml config.toml   # puis éditer config.toml
-uv run ged init-db
-```
-
-> `init-db` crée les extensions `unaccent`, `pg_trgm` et `fuzzystrmatch`. Si le rôle `ged` n'a pas le droit de les créer, les créer une fois en superutilisateur dans la base `ged`.
-
-### Installation rapide sur un poste, sans droits administrateur
-
-Pour tester sur un PC de travail : un script installe tout (uv, Python, PostgreSQL en version zip, fichier de langue OCR) dans `%LOCALAPPDATA%\ged`, sans toucher au système ni au PATH, crée la base et génère `config.toml` :
+Un script installe tout (uv, Python, PostgreSQL en version zip, fichier de langue OCR) dans `%LOCALAPPDATA%\ged`, sans toucher au système ni au PATH, crée la base et génère `config.toml`. Il peut être relancé : les étapes faites sont sautées.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\outils\installation\Installer-Poste.ps1 `
     -Source 'GED Infra|\\nas\infra\ged|Infra', 'GED Métier|\\nas\metier\ged|Métier'
 ```
 
-Options : `-Port 5433` si un PostgreSQL utilise déjà le port 5432, `-Proxy http://proxy:8080` derrière un proxy, `-OcrPrecis` pour le modèle OCR le plus précis. Le script peut être relancé : les étapes déjà faites sont sautées.
+Options : `-Port 5433` (si le port 5432 est pris), `-Proxy http://proxy:8080`, `-OcrPrecis`. Au quotidien, `.\outils\installation\GED-Poste.ps1 <commande>` démarre PostgreSQL si besoin puis lance la commande : `demarrer` (interface sur http://localhost:8000), `indexer`, `ocr`, `analyser`, `reinitialiser`, `arreter`.
 
-PostgreSQL ne tourne pas en service Windows (il faudrait des droits admin). Au quotidien (précéder de `powershell -ExecutionPolicy Bypass -File` si l'exécution de scripts est bloquée sur le poste) :
+> Peuvent bloquer malgré l'absence de droits admin : AppLocker, un proxy, l'antivirus. Prévenir le service informatique avant un test sur un poste de production.
+
+### Serveur (VM Windows)
 
 ```powershell
-.\outils\installation\GED-Poste.ps1 demarrer    # PostgreSQL si besoin + interface sur http://localhost:8000
-.\outils\installation\GED-Poste.ps1 indexer     # indexe les partages
-.\outils\installation\GED-Poste.ps1 ocr         # passe les scans en OCR
-.\outils\installation\GED-Poste.ps1 analyser    # rapport pour construire la taxonomie (analyse-taxonomie.md)
-.\outils\installation\GED-Poste.ps1 reinitialiser  # vide l'index pour repartir de zéro (confirmation demandée)
-.\outils\installation\GED-Poste.ps1 arreter     # arrête PostgreSQL
+git clone <url-du-depot> C:\GED\ged-dsi
+cd C:\GED\ged-dsi
+uv sync
+copy config.exemple.toml config.toml   # puis l'adapter, avec hote = "0.0.0.0"
 ```
 
-> Peuvent bloquer malgré l'absence de droits admin : AppLocker (exécutables lancés depuis le profil), un proxy, l'antivirus. Prévenir le service informatique avant un test sur un poste de production.
+```sql
+-- en administrateur PostgreSQL
+CREATE ROLE ged LOGIN PASSWORD 'mot-de-passe-solide';
+CREATE DATABASE ged OWNER ged ENCODING 'UTF8';
+```
+
+`ged indexer` et `ged serveur` créent ou mettent à jour le schéma à leur démarrage (`ged init-db` le fait seul). Si le rôle `ged` ne peut pas créer les extensions, les créer une fois en superutilisateur.
+
+1. **Indexation nocturne** : tâche planifiée exécutée avec le compte de service : `uv run --directory C:\GED\ged-dsi ged indexer`, puis `... ged ocr`.
+2. **Serveur web** permanent : service Windows ([NSSM](https://nssm.cc/), [WinSW](https://github.com/winsw/winsw)) lançant `uv run ged serveur`.
+3. **Pare-feu** : ouvrir le port pour le réseau interne et le VPN.
+4. **Identification** : renseigner `groupes_admin` et vérifier la zone « Intranet local » sur les postes (voir ci-dessous).
+
+> ⚠️ L'interface est servie en HTTP : le cookie de session et les documents circulent en clair. À réserver au réseau interne et au VPN ; pour aller plus loin, placer un proxy HTTPS devant.
 
 ## Configuration
 
-Tout se règle dans `config.toml` (non versionné, voir [`config.exemple.toml`](config.exemple.toml)) :
+Tout se règle dans `config.toml` (non versionné, modèle commenté : [`config.exemple.toml`](config.exemple.toml)) :
 
 ```toml
 [base]
@@ -195,125 +163,95 @@ url = "postgresql://ged:mot-de-passe@localhost:5432/ged"
 active = true
 tessdata = 'C:\GED\tessdata'     # dossier contenant fra.traineddata
 
-[interface]
-exemples_recherche = "imprimante, identitovigilance, \"message d'erreur\""   # texte de la barre de recherche vide
+[indexation]
+exclure = ['*\Applis\*']         # dossiers non parcourus (chemin complet, * joker, casse ignorée)
 
-[[sources]]
+[authentification]
+groupes_admin = ['CLINIQUES\GED-Admins']   # voient tous les documents et l'état de l'index
+
+[[sources]]                      # une section par dossier à indexer
 nom = "GED Infra"
 chemin = '\\nas\infra\ged'
 pole = "Infra"
-
-[indexation]
-exclure = [
-    '\\nas\metier\ged\Applis\LogicielX',   # un dossier précis
-    '*\Applis\*',                          # tous les dossiers « Applis », où qu'ils soient
-]
 ```
 
-**Exclure des dossiers** (dossiers d'applications, archives…) : chaque motif `exclure` porte sur le chemin complet, `*` remplaçant n'importe quelle suite de caractères, majuscules indifférentes. Un dossier visé n'est pas parcouru du tout ; au passage suivant de `ged indexer`, ses documents sortent de l'index (et y reviennent si le motif est retiré). Les programmes et bibliothèques (`.exe`, `.dll`, `.jar`, `.msi`…) sont déjà ignorés partout. Pour trouver le chemin d'un dossier : cliquer sur son nom dans l'arborescence, il s'affiche dans les filtres actifs.
+Un dossier exclu sort de l'index au passage suivant de `ged indexer` (et y revient si le motif est retiré) ; son chemin s'affiche dans les filtres actifs quand on clique dessus dans l'arborescence.
 
-Les tags automatiques se règlent dans [`taxonomie.toml`](taxonomie.toml) : un libellé, une liste de mots-clés (préfixe `titre:` pour un mot-clé qui ne compte que dans le nom ou le titre du document). Après modification, `ged recalculer` réapplique les règles sans relire les fichiers. Pour la construire : `ged analyser` produit un rapport (noms de dossiers, mots fréquents des noms de fichiers, couverture des tags actuels, propositions), sans le texte des documents ; [`CLAUDE.md`](CLAUDE.md) décrit la marche à suivre avec Claude Code, si la politique du groupe l'autorise. **La liste fournie est un premier jet à compléter avec les pôles** (logiciels métier réels, secteurs).
+**Tags** : [`taxonomie.toml`](taxonomie.toml) associe à chaque libellé des mots-clés (préfixe `titre:` pour un mot qui ne compte que dans le nom ou le titre). `ged recalculer` réapplique les règles sans relire les fichiers ; `ged analyser` produit un rapport (dossiers, mots fréquents des noms, couverture des tags) pour la construire, et [`CLAUDE.md`](CLAUDE.md) décrit la marche à suivre avec Claude Code, si la politique du groupe l'autorise. La liste fournie est un premier jet à compléter avec les pôles.
 
-### Droits d'accès et identification
+## Droits d'accès et identification
 
 ```toml
 [authentification]
-active = true                 # false : pas d'identification, tout le monde voit tout (démo, poste isolé)
-protocole = "NTLM"            # ou "Negotiate" (Kerberos), voir ci-dessous
-groupes_admin = ['CLINIQUES\GED-Admins']   # voient tous les documents et l'état de l'index
-duree_session_heures = 8
+active = true                 # false : pas d'identification, tout le monde voit tout (démo)
+protocole = "NTLM"            # ou "Negotiate" (Kerberos)
+groupes_admin = ['CLINIQUES\GED-Admins']
+duree_session_heures = 8      # un changement de groupe compte à la session suivante
 ```
 
-**Identification** : à la première visite, le serveur demande au navigateur de s'identifier ; Edge et Chrome envoient alors la session Windows ouverte, sans rien demander, si l'adresse de la GED est dans la zone « Intranet local » (c'est le cas d'un nom court comme `http://vm-ged:8000` ; pour un nom complet ou une adresse IP, l'ajouter par GPO : *Liste des attributions de sites aux zones*). **Firefox** ne le fait que pour les sites autorisés : `about:config` › `network.automatic-ntlm-auth.trusted-uris` = `vm-ged` (ou `localhost` sur le poste du serveur), ou, pour tout un parc, la stratégie Firefox *Authentication* › `NTLM` (`SPNEGO` pour Kerberos) ; sinon il demande identifiant et mot de passe. Windows vérifie l'identité auprès du contrôleur de domaine et fournit la liste complète des groupes de la personne, groupes imbriqués compris. Un cookie de session évite ensuite de recommencer à chaque page ; un changement de groupe est pris en compte à la session suivante (après `duree_session_heures`, ou un redémarrage du serveur). Le compte connecté s'affiche à droite du bandeau.
+**Identification.** Le serveur demande au navigateur de s'identifier ; Windows vérifie l'identité auprès du contrôleur de domaine et fournit tous les groupes de la personne, imbriqués compris. Un cookie de session (jeton aléatoire, sans nom ni groupe) prend le relais.
+- **Edge et Chrome** envoient la session Windows sans rien demander pour les sites de la zone « Intranet local » : c'est le cas d'un nom court (`http://vm-ged:8000`, `http://localhost:8000`). Pour une adresse IP ou un nom complet, l'ajouter à la zone par GPO (*Liste des attributions de sites aux zones*) ; `127.0.0.1` est redirigé vers `localhost`.
+- **Firefox** ne le fait que pour les sites indiqués : `about:config` › `network.automatic-ntlm-auth.trusted-uris`, ou pour un parc la stratégie Firefox *Authentication*. Une page d'accueil le lui explique avant toute demande de mot de passe.
+- **NTLM ou Kerberos** : NTLM fonctionne quel que soit le compte du serveur. Kerberos (`Negotiate`) exige que ce compte porte le SPN `HTTP/<serveur>` (service sous le compte machine, ou `setspn -S HTTP/vm-ged CLINIQUES\svc-ged` par un admin du domaine), sinon l'identification échoue.
 
-**NTLM ou Kerberos** : NTLM fonctionne quel que soit le compte qui fait tourner le serveur. Kerberos (`Negotiate`) est plus sûr, mais il exige que ce compte porte le SPN `HTTP/<nom du serveur>` : serveur lancé en service sous le compte machine (*Service réseau*), ou SPN déclaré par un administrateur du domaine (`setspn -S HTTP/vm-ged CLINIQUES\svc-ged`). Sinon le navigateur obtient un ticket que le serveur ne sait pas lire et l'identification échoue.
+**Ce que chacun voit.** Un document est visible si la personne peut **lire** le fichier, droits évalués comme Windows le fait (la première entrée qui concerne l'un de ses groupes décide : un refus explicite l'emporte sur une autorisation, une autorisation explicite sur un refus hérité). Un document hors de ses droits répond « Document inconnu », comme s'il n'existait pas ; un document dont les droits n'ont pas pu être lus est masqué. Si rien n'est visible, l'accueil dit pourquoi (aucun droit, droits pas encore enregistrés, index vide). Les administrateurs de la GED voient tout, et sont seuls à voir **État de l'index**.
 
-**Ce que chacun voit** : un document est visible si la personne peut **lire** le fichier d'après ses droits NTFS, évalués comme Windows le fait (la première entrée qui concerne l'un de ses groupes décide : un refus explicite l'emporte sur une autorisation, une autorisation explicite sur un refus hérité). Le filtre s'applique partout : résultats, arborescence, suggestions, compteurs de tags et de dates, doublons, fiche et téléchargement du fichier (un document hors de ses droits répond « Document inconnu », comme s'il n'existait pas). La page **État de l'index** est réservée aux administrateurs de la GED.
+**Droits des partages.** Windows applique aussi ceux du partage (le plus restrictif l'emporte). Ils sont relus à chaque indexation s'ils sont lisibles, ce qui demande d'être administrateur du serveur de fichiers ; sinon seuls les droits NTFS s'appliquent (cas habituel : partage ouvert à tous, sécurité portée par NTFS).
 
-**Droits des partages** : Windows applique aussi les droits du partage réseau (le plus restrictif l'emporte). Ils sont relus à chaque indexation, mais seul un administrateur du serveur de fichiers peut les lire : sinon, un avertissement s'affiche et seuls les droits NTFS sont appliqués (cas habituel : partage ouvert à « Tout le monde », sécurité portée par NTFS).
+**Groupes.** La page « Mes groupes » lit la hiérarchie dans l'Active Directory (`memberOf`, lisible par tout compte du domaine, gardé une heure en mémoire). Hors domaine, les groupes sont seulement classés (locaux, identités système).
 
-**Limites** : les droits sont ceux de la dernière indexation (une modification de droits est prise en compte au passage suivant de `ged indexer`) ; les entrées de droits conditionnelles (contrôle d'accès dynamique) sont ignorées ; la correction orthographique s'appuie sur le vocabulaire de tous les documents, mais ne propose que des mots présents dans des documents visibles.
+**Limites.** Les droits sont ceux de la dernière indexation ; les entrées conditionnelles (contrôle d'accès dynamique) sont ignorées ; la correction orthographique s'appuie sur le vocabulaire de tous les documents mais ne propose que des mots présents dans des documents visibles.
 
-> **Mise à jour d'une installation existante** : `ged serveur` et `ged indexer` mettent le schéma à jour au démarrage ; lancer `ged indexer` : les fichiers inchangés ne sont pas relus, seuls leurs droits sont mis à jour. D'ici là, les documents n'ont pas encore de droits enregistrés et restent masqués, sauf aux administrateurs de la GED.
+> **Après la mise à jour d'une installation existante**, lancer `ged indexer` : les fichiers inchangés ne sont pas relus, seuls leurs droits sont enregistrés. D'ici là, les documents restent masqués, sauf aux administrateurs de la GED.
 
 ## Utilisation
 
 ```powershell
-uv run ged indexer             # indexe les nouveautés (rapide si peu de changements) ; barre de progression, temps restant et fichier en cours
-uv run ged indexer --forcer    # relit tous les fichiers (le texte OCR des fichiers inchangés est conservé)
-uv run ged recalculer          # réapplique tags et codes sans relire les fichiers (après modif. de taxonomie.toml)
-uv run ged ocr                 # passe en OCR les scans en attente
-uv run ged ocr --limite 50     # ... par lots
-uv run ged serveur             # interface web sur http://localhost:8000
-uv run ged analyser           # écrit analyse-taxonomie.md : dossiers, mots fréquents, couverture des tags
-uv run ged reinitialiser       # vide l'index (confirmation demandée), puis relancer ged indexer
+uv run ged indexer             # nouveautés seulement (barre de progression, temps restant)
+uv run ged indexer --forcer    # relit tout (le texte OCR des fichiers inchangés est conservé)
+uv run ged ocr [--limite 50]   # scans en attente d'OCR, éventuellement par lots
+uv run ged recalculer          # réapplique tags et codes sans relire les fichiers
+uv run ged analyser            # rapport analyse-taxonomie.md pour construire les tags
+uv run ged serveur             # interface sur http://localhost:8000
+uv run ged reinitialiser       # vide l'index (confirmation demandée)
 ```
 
-Dans l'interface :
-
-- taper quelques mots : les résultats s'affichent au fil de la frappe (`imprimante bloq`, `"message d'erreur"`, `identitovigilance -formation`) ;
-- affiner avec les filtres à gauche ;
-- **Ouvrir** affiche le fichier (PDF, images) ou le télécharge (Word, Excel) ;
-- **Copier le chemin** donne le chemin réseau à coller dans l'explorateur Windows ;
-- la page **État de l'index** (administrateurs de la GED) liste les sources, le volume indexé et les erreurs de lecture.
-
-## Mise en production
-
-Sur la VM Windows :
-
-1. Installer Python, uv, PostgreSQL ; déposer `fra.traineddata` ; configurer `config.toml` avec `hote = "0.0.0.0"`.
-2. **Indexation nocturne** : tâche planifiée Windows exécutée avec le compte de service :
-   ```powershell
-   uv run --directory C:\GED\ged-dsi ged indexer
-   uv run --directory C:\GED\ged-dsi ged ocr
-   ```
-3. **Serveur web** permanent : service Windows (par exemple via [NSSM](https://nssm.cc/) ou [WinSW](https://github.com/winsw/winsw)) lançant `uv run ged serveur`.
-4. Ouvrir le port dans le pare-feu Windows pour le réseau interne et le VPN.
-5. **Identification** : renseigner `groupes_admin`, vérifier que l'adresse de la GED est en zone « Intranet local » sur les postes (voir [Droits d'accès et identification](#droits-daccès-et-identification)).
-
-> ⚠️ L'interface est servie en HTTP : le cookie de session et les documents circulent en clair sur le réseau. À n'exposer que sur le réseau interne et le VPN ; pour aller plus loin, placer un proxy HTTPS devant.
+Dans l'interface : taper quelques mots (`imprimante bloq`, `"message d'erreur"`, `identitovigilance -formation`), affiner avec les filtres, cliquer sur un dossier, un tag ou un nom pour filtrer dessus. **Ouvrir** affiche ou télécharge le fichier, **Copier le chemin** donne le chemin réseau à coller dans l'explorateur.
 
 ## Outil d'inventaire
 
-[`outils/inventaire/Inventaire-GED.ps1`](outils/inventaire/Inventaire-GED.ps1) : script PowerShell autonome (PowerShell 5.1+, sans droits admin, en lecture seule) qui dresse l'état des lieux d'une arborescence avant la mise en place de la GED : volumes par type, effort d'OCR, ancienneté, doublons, familles de versions, homogénéité de structure des `.docx`.
+[`outils/inventaire/Inventaire-GED.ps1`](outils/inventaire/Inventaire-GED.ps1) dresse l'état des lieux d'une arborescence avant la mise en place de la GED (PowerShell 5.1+, sans droits admin, lecture seule) : volumes par type, effort d'OCR, ancienneté, doublons, familles de versions, homogénéité des `.docx`. Résultat : un `rapport.txt` et des CSV.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\outils\inventaire\Inventaire-GED.ps1 `
     -Chemin '\\nas\metier\ged','\\nas\infra\ged' -Approfondi -Sortie C:\Temp\inventaire
 ```
 
-Pour ne pas tout retaper : copier [`Inventaire-GED.exemple.psd1`](outils/inventaire/Inventaire-GED.exemple.psd1) en `Inventaire-GED.config.psd1` (même dossier, non versionné), y mettre les dossiers, la sortie et les exclusions, puis lancer le script sans paramètre. Un dossier exclu n'est pas parcouru du tout ; les programmes et bibliothèques (`.exe`, `.dll`, `.jar`, `.msi`…) sont comptés comme fichiers parasites, comme dans la GED.
+Pour ne pas tout retaper : copier [`Inventaire-GED.exemple.psd1`](outils/inventaire/Inventaire-GED.exemple.psd1) en `Inventaire-GED.config.psd1` et lancer le script sans paramètre. Aide complète : `Get-Help .\outils\inventaire\Inventaire-GED.ps1 -Full`.
 
-Résultat : un `rapport.txt` de synthèse et des CSV détaillés (ouvrables dans Excel). Voir l'aide intégrée : `Get-Help .\outils\inventaire\Inventaire-GED.ps1 -Full`.
+## Développement
 
-## Structure du projet
+```powershell
+uv sync                 # dépendances, y compris de développement
+uv run pytest           # tests : documents générés à la volée, pas de PostgreSQL nécessaire
+```
+
+Les tests SQL du filtrage des droits tournent en plus sur une base de test jetable si `GED_TEST_BASE` est défini (`postgresql://...`), dans une transaction annulée. Aucun document réel n'est nécessaire, ni ne doit être ajouté au dépôt. Captures du README : [`outils/demo`](outils/demo).
 
 ```
-ged-dsi/
-├── ged/
-│   ├── __main__.py      # ligne de commande (init-db, indexer, ocr, serveur)
-│   ├── config.py        # lecture de config.toml
-│   ├── schema.sql       # schéma PostgreSQL (idempotent)
-│   ├── db.py
-│   ├── extraction.py    # texte et métadonnées par format
-│   ├── ocr.py           # OCR via PyMuPDF / Tesseract
-│   ├── taxonomie.py     # tags automatiques par mots-clés
-│   ├── indexeur.py      # parcours des sources, indexation incrémentale
-│   ├── recherche.py     # requêtes plein texte, filtres, correction, suggestions
-│   ├── extraits.py      # extraits surlignés des résultats
-│   ├── arborescence.py  # arbre des résultats, outils sur les chemins
-│   ├── droits.py        # propriétaire et droits NTFS, droits des partages (pywin32)
-│   ├── acces.py         # qui peut voir quoi : filtre SQL selon les droits de la personne
-│   ├── texte.py         # normalisation, détection du code documentaire
-│   └── web/             # application FastAPI, identification Windows (authentification.py), gabarits, CSS
-├── outils/inventaire/   # script PowerShell d'état des lieux
-├── outils/installation/ # installation sans droits admin et commandes du quotidien
-├── outils/demo/         # documents fictifs et captures d'écran du README
-├── docs/captures/       # captures d'écran (thèmes sombre et clair)
-├── tests/
-├── config.exemple.toml
-├── taxonomie.toml
-└── pyproject.toml
+ged/
+├── __main__.py      # ligne de commande
+├── config.py        # lecture de config.toml
+├── schema.sql       # schéma PostgreSQL (idempotent)
+├── extraction.py    # texte et métadonnées par format ; ocr.py : OCR
+├── indexeur.py      # parcours des sources, indexation incrémentale
+├── taxonomie.py     # tags automatiques ; texte.py : normalisation, code documentaire
+├── recherche.py     # plein texte, filtres, correction, suggestions ; extraits.py, arborescence.py
+├── droits.py        # droits NTFS et des partages (pywin32)
+├── acces.py         # qui peut voir quoi : filtre SQL selon les droits de la personne
+├── annuaire.py      # hiérarchie des groupes (Active Directory)
+└── web/             # FastAPI, identification Windows (authentification.py), gabarits
+outils/              # inventaire, installation sans droits admin, démo et captures
 ```
 
 ## Feuille de route
@@ -322,13 +260,4 @@ ged-dsi/
 - [x] **Phase 1** — Indexation en lecture seule, OCR, recherche web avec filtres et tags automatiques
 - [ ] **Phase 2** — Dépôt de nouveaux documents : dossier « À classer », OCR, proposition de code et de tags, validation humaine, copie dans l'arborescence GED
 - [ ] **Phase 3** — Conformité à la procédure des procédures : modèle `.dotx` à champs, génération des nouvelles notes, contrôle de structure, dates de révision
-- [ ] **Phase 4** — ~~Authentification Windows et filtrage selon les droits NTFS~~ (fait), tags manuels dans l'interface, liens avec la base de connaissances EasyVista, détection des versions, IA (selon la politique du groupe)
-
-## Développement
-
-```powershell
-uv sync                 # installe aussi les dépendances de développement
-uv run pytest           # tests (n'ont pas besoin de PostgreSQL)
-```
-
-Les tests génèrent leurs propres documents à la volée : aucun document réel n'est nécessaire ni ne doit être ajouté au dépôt.
+- [ ] **Phase 4** — ~~Identification Windows et filtrage selon les droits NTFS~~ (fait), tags manuels dans l'interface, liens avec la base de connaissances EasyVista, détection des versions, IA (selon la politique du groupe)

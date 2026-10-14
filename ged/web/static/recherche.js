@@ -82,7 +82,8 @@
   // tout tient en 2 ans, ou quand la période choisie fait 2 ans au plus). Les comptes ignorent
   // la période choisie, pour voir ce qu'il y a autour. Chaque année (ou mois) est une colonne
   // cliquable, marquée d'un trait vertical discret ; les deux poignées choisissent un intervalle.
-  // Masquée par défaut (bouton 📅), ouverte d'office quand une période est choisie.
+  // Masquée par défaut, ouverte d'office quand une période est choisie. Son aperçu (même courbe,
+  // en petit, dans la barre de recherche) l'ouvre ou la ferme d'un clic.
 
   const frise = document.getElementById('frise');
   const boutonFrise = document.getElementById('afficher-frise');
@@ -126,8 +127,9 @@
 
   // SVG de la courbe : 10 unités par colonne, étiré à la largeur de la frise (le trait garde
   // son épaisseur). La partie choisie est colorée, le reste grisé (découpe .frise-zone).
+  // `decoupe` : identifiant du clipPath, distinct pour la frise et son aperçu.
   const HAUTEUR_COURBE = 30;
-  function courbe(max) {
+  function courbe(max, decoupe) {
     const n = periodes.length;
     const h = HAUTEUR_COURBE;
     const y = (nb) => (h - 1.5 - (nb / max) * (h - 4)).toFixed(2);
@@ -137,10 +139,10 @@
     points.push([n * 10, points[points.length - 1][1]]);
     const ligne = cheminLisse(points);
     return `<svg class="frise-courbe" viewBox="0 0 ${n * 10} ${h}" preserveAspectRatio="none" aria-hidden="true">
-      <defs><clipPath id="frise-choix"><rect class="frise-zone" x="0" y="0" width="${n * 10}" height="${h}"/></clipPath></defs>
-      <path class="frise-aire" d="${ligne}L${n * 10},${h}L0,${h}Z" clip-path="url(#frise-choix)"/>
+      <defs><clipPath id="${decoupe}"><rect class="frise-zone" x="0" y="0" width="${n * 10}" height="${h}"/></clipPath></defs>
+      <path class="frise-aire" d="${ligne}L${n * 10},${h}L0,${h}Z" clip-path="url(#${decoupe})"/>
       <path class="frise-ligne grisee" d="${ligne}"/>
-      <path class="frise-ligne" d="${ligne}" clip-path="url(#frise-choix)"/>
+      <path class="frise-ligne" d="${ligne}" clip-path="url(#${decoupe})"/>
     </svg>`;
   }
 
@@ -223,9 +225,12 @@
       poignees.append(curseur);
     }
     poignees.hidden = n < 2;
-    batons.insertAdjacentHTML('afterbegin', courbe(max));
+    batons.insertAdjacentHTML('afterbegin', courbe(max, 'frise-choix'));
     batons.append(poignees);
     frise.append(entete, batons, axe);
+    // Aperçu : la courbe, et sous elle la période affichée ou choisie
+    boutonFrise.innerHTML = courbe(max, 'mini-frise-choix');
+    boutonFrise.append(element('span', 'mini-frise-libelle'));
     surlignerFrise(a, b, Boolean(du || au));
   }
 
@@ -236,16 +241,21 @@
 
   function surlignerFrise(a, b, choisie) {
     frise.classList.toggle('choisie', choisie);
+    boutonFrise.classList.toggle('choisie', choisie);
     frise.querySelectorAll('.frise-baton').forEach((baton, i) => baton.classList.toggle('dans', i >= a && i <= b));
-    const zone = frise.querySelector('.frise-zone');
-    zone.setAttribute('x', choisie ? a * 10 : 0);
-    zone.setAttribute('width', choisie ? (b - a + 1) * 10 : periodes.length * 10);
+    for (const zone of [frise.querySelector('.frise-zone'), boutonFrise.querySelector('.frise-zone')]) {
+      zone.setAttribute('x', choisie ? a * 10 : 0);
+      zone.setAttribute('width', choisie ? (b - a + 1) * 10 : periodes.length * 10);
+    }
     const nb = periodes.slice(a, b + 1).reduce((t, p) => t + p.nb, 0);
     const [du, au] = bornesPeriode(a, b);
     const libelle = !choisie ? 'Toutes les dates'
       : du === au ? libellePeriode(du)
       : `${libellePeriode(du)} → ${libellePeriode(au)}`;
     frise.querySelector('.frise-choix').textContent = `${libelle} · ${nb} document${nb > 1 ? 's' : ''}`;
+    // Aperçu : l'étendue des dates tant que rien n'est choisi
+    const etendue = `${libellePeriode(periodes[0].cle)} → ${libellePeriode(periodes[periodes.length - 1].cle)}`;
+    boutonFrise.querySelector('.mini-frise-libelle').textContent = `📅 ${choisie ? libelle : etendue}`;
   }
 
   // Toute la frise (sans zoom) : pas de filtre

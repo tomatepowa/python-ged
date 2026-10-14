@@ -10,8 +10,11 @@
              placeholder="Rechercher{% if exemples_recherche %} : {{ exemples_recherche }}{% endif %}…">
       <div id="suggestions" class="suggestions" role="listbox" hidden></div>
     </div>
-    <button type="button" class="bouton-frise" id="afficher-frise" aria-controls="frise"
-            aria-expanded="{{ 'true' if filtres.du or filtres.au else 'false' }}" title="Filtrer par date de modification">📅</button>
+    {# Aperçu de la frise des dates (courbe dessinée par recherche.js) : un clic ouvre la frise complète #}
+    <button type="button" class="mini-frise" id="afficher-frise" aria-controls="frise"
+            aria-expanded="{{ 'true' if filtres.du or filtres.au else 'false' }}" title="Filtrer par date de modification">
+      <span class="mini-frise-libelle">📅 Dates</span>
+    </button>
     <button type="submit">Rechercher</button>
   </div>
   {# Dossier auquel la recherche est limitée (clic sur un dossier de l'arborescence) #}

@@ -15,7 +15,12 @@
 
 {% for d in resultats.documents %}
 <article class="resultat">
-  <h2><a href="/document/{{ d.id }}">{{ d.nom }}</a></h2>
+  {# Titre et boutons sur une même ligne : une carte plus basse, plus de résultats par écran #}
+  <div class="entete-resultat">
+    <h2><a href="/document/{{ d.id }}">{{ d.nom }}</a></h2>
+    <a class="bouton" href="/document/{{ d.id }}/fichier" target="_blank">Ouvrir</a>
+    <button type="button" class="bouton secondaire" data-copier="{{ d.chemin }}">Copier le chemin</button>
+  </div>
   {% if d.sous_titre %}<p class="sous-titre">{{ d.sous_titre }}</p>{% endif %}
   <div class="meta">
     <span class="badge pole">{{ d.pole }}</span>
@@ -24,14 +29,11 @@
     {% for t in d.tags %}<a class="badge tag" href="/?tag={{ t.id }}" data-tag="{{ t.id }}" title="Tous les documents « {{ t.libelle }} »">{{ t.libelle }}</a>{% endfor %}
     {% if d.statut == "ocr_requis" %}<span class="badge alerte">Scan non lu (OCR en attente)</span>{% endif %}
     {% if d.statut == "sans_texte" %}<span class="badge">Image sans texte</span>{% endif %}
+    {# Chemin entre les badges et la date : il se réduit en « … » s'il manque de place #}
+    <span class="fil-chemin" title="{{ d.chemin_relatif }}">📁{% if not d.chemin_decoupe.debut %} racine{% endif %}{{ segments(d.chemin_decoupe.debut, "debut", d.source_id) }}{{ segments(d.chemin_decoupe.milieu, "milieu", d.source_id) }}{{ segments(d.chemin_decoupe.fin, "fin", d.source_id) }}</span>
     <span class="date">modifié le {{ d.modifie_le | date }}{% if d.dernier_modificateur or d.auteur %} par {{ d.dernier_modificateur or d.auteur }}{% endif %}</span>
   </div>
   {% if d.extrait %}<p class="extrait">{{ d.extrait }}</p>{% endif %}
-  <div class="actions">
-    <a class="bouton" href="/document/{{ d.id }}/fichier" target="_blank">Ouvrir</a>
-    <button type="button" class="bouton secondaire" data-copier="{{ d.chemin }}">Copier le chemin</button>
-    <span class="fil-chemin" title="{{ d.chemin_relatif }}">📁{% if not d.chemin_decoupe.debut %} racine{% endif %}{{ segments(d.chemin_decoupe.debut, "debut", d.source_id) }}{{ segments(d.chemin_decoupe.milieu, "milieu", d.source_id) }}{{ segments(d.chemin_decoupe.fin, "fin", d.source_id) }}</span>
-  </div>
 </article>
 {% endfor %}
 

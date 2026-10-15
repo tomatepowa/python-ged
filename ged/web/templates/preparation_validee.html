@@ -1,0 +1,32 @@
+{% extends "base_preparation.html" %}
+{% block contenu %}
+<h1>Exclusions enregistrées</h1>
+<p><code>{{ fichier }}</code> est à jour :
+{{ exclus | length }} dossier{{ "s" if exclus | length > 1 }} exclu{{ "s" if exclus | length > 1 }}{% if nb_config %}
+(plus {{ nb_config }} motif{{ "s" if nb_config > 1 }} de config.toml){% endif %} :
+<strong>{{ indexes | nombre }} fichier{{ "s" if indexes > 1 }} à indexer</strong> sur {{ total | nombre }}.</p>
+
+{% if exclus %}
+<table>
+  <thead><tr><th>Dossier exclu</th><th class="nombre">Fichiers</th><th class="nombre">Volume</th></tr></thead>
+  <tbody>
+  {% for d in exclus %}
+    <tr><td class="chemin">{{ d.chemin }}</td><td class="nombre">{{ d.fichiers | nombre }}</td><td class="nombre">{{ d.taille | taille }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% if conserves %}
+<p class="note">Gardés de l'ancien fichier, car ils ne visent aucun dossier parcouru :
+{% for m in conserves %}<code>{{ m }}</code>{{ ", " if not loop.last }}{% endfor %}.</p>
+{% endif %}
+
+<h2>Et maintenant</h2>
+<ol>
+  <li>Arrêtez la préparation : Ctrl+C dans la console.</li>
+  <li>Vérifiez l'installation : <code>ged verifier</code>.</li>
+  <li>Lancez l'indexation complète : <code>ged indexer</code>
+    (ou <code>.\outils\installation\GED-Poste.ps1 indexer</code>).</li>
+</ol>
+<p><a href="/">← Revenir aux dossiers</a> pour modifier les choix.</p>
+{% endblock %}

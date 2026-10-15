@@ -11,6 +11,8 @@
     ocr      : démarre PostgreSQL si besoin, puis passe en OCR les scans en attente
     recalculer : réapplique tags et codes (après modification de taxonomie.toml)
     analyser : écrit analyse-taxonomie.md (statistiques pour construire taxonomie.toml)
+    preparer : parcours rapide des partages et page pour choisir les dossiers à exclure (avant indexer)
+    verifier : vérifie l'installation (base, partages, outils, identification)
     reinitialiser : vide l'index pour repartir de zéro (confirmation demandée), puis relancer indexer
 
 .EXAMPLE
@@ -19,7 +21,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('demarrer', 'arreter', 'etat', 'indexer', 'ocr', 'recalculer', 'reinitialiser', 'analyser')]
+    [ValidateSet('demarrer', 'arreter', 'etat', 'indexer', 'ocr', 'recalculer', 'reinitialiser', 'analyser', 'preparer', 'verifier')]
     [string]$Action = 'etat',
 
     [string]$Dossier = (Join-Path $env:LOCALAPPDATA 'ged')
@@ -77,6 +79,10 @@ switch ($Action) {
         Start-Postgres
         Write-Host 'Interface : http://localhost:8000  (Ctrl+C pour arrêter)' -ForegroundColor Green
         Invoke-Ged @('serveur')
+    }
+    'preparer' {
+        # Sans base de données : seuls les partages sont parcourus
+        Invoke-Ged @('preparer')
     }
     default {
         Start-Postgres

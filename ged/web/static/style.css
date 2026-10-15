@@ -535,3 +535,47 @@ a.badge.tag:hover { outline: 1px solid var(--tag-texte); }
 .arbre-groupes .groupe::before { content: "▸ "; color: var(--texte-doux); }
 .arbre-groupes .note { margin-left: .4rem; font-size: .85em; }
 .suggestion.personne .nb { margin-left: auto; }
+
+/* Préparation (« ged preparer ») : arborescence des sources à cocher */
+.legende-prep { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; color: var(--texte-doux); font-size: .85rem; }
+.source-prep { margin-bottom: 1.5rem; }
+.source-prep h2 { display: flex; flex-wrap: wrap; align-items: baseline; gap: .6rem; font-size: 1.15rem; }
+.arbre-prep, .arbre-prep ul { list-style: none; margin: 0; padding: 0; }
+.arbre-prep ul { margin-left: 1.1rem; padding-left: .6rem; border-left: 1px solid var(--bordure); }
+.ligne-prep { display: flex; flex-wrap: wrap; align-items: center; gap: .2rem .5rem; padding: .15rem 0; font-size: .92rem; }
+.ligne-prep label { display: flex; align-items: center; gap: .35rem; min-width: 0; cursor: pointer; }
+.nom-prep { overflow-wrap: anywhere; }
+.racine-prep { font-weight: 600; }
+.ligne-prep .badge { font-size: .75rem; }
+.plier { width: 1.4rem; padding: 0; background: none; color: var(--texte-doux); font-size: .9rem; text-align: center; }
+.plier:hover { color: var(--accent); }
+.details-prep { color: var(--texte-doux); font-size: .8rem; }
+.compteur { padding: .05rem .5rem; border-radius: 999px; font-size: .78rem; white-space: nowrap; }
+.compteur.niveau-0 { background: var(--badge); color: var(--texte-doux); }
+.compteur.niveau-1 { background: #dcebff; color: #17468c; }
+.compteur.niveau-2 { background: #ffe7b8; color: #7a4b00; }
+.compteur.niveau-3 { background: #ffd0cc; color: #8c1d14; font-weight: 600; }
+.badge.erreur { background: #ffd0cc; color: #8c1d14; }
+@media (prefers-color-scheme: dark) {
+  .compteur.niveau-1 { background: #1d3352; color: #b8d4ff; }
+  .compteur.niveau-2 { background: #4a3510; color: #ffd27a; }
+  .compteur.niveau-3, .badge.erreur { background: #4d1c18; color: #ffb4ab; }
+}
+/* Dossier décoché : barré, et ses sous-dossiers estompés (ils suivent le parent) */
+.dossier-prep.exclu > .ligne-prep .nom-prep { color: var(--texte-doux); text-decoration: line-through; }
+.dossier-prep.exclu > ul { opacity: .45; pointer-events: none; }
+.barre-validation {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-top: 1rem;
+  padding: .75rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--bordure);
+  border-radius: 10px;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, .12);
+}

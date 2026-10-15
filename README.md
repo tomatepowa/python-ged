@@ -123,7 +123,7 @@ powershell -ExecutionPolicy Bypass -File .\outils\installation\Installer-Poste.p
     -Source 'GED Infra|\\nas\infra\ged|Infra', 'GED Métier|\\nas\metier\ged|Métier'
 ```
 
-Options : `-Port 5433` (si le port 5432 est pris), `-Proxy http://proxy:8080`, `-OcrPrecis`. Au quotidien, `.\outils\installation\GED-Poste.ps1 <commande>` démarre PostgreSQL si besoin puis lance la commande : `demarrer` (interface sur http://localhost:8000), `indexer`, `ocr`, `analyser`, `reinitialiser`, `arreter`.
+Options : `-Port 5433` (si le port 5432 est pris), `-Proxy http://proxy:8080`, `-OcrPrecis`. Au quotidien, `.\outils\installation\GED-Poste.ps1 <commande>` démarre PostgreSQL si besoin puis lance la commande : `demarrer` (interface sur http://localhost:8000), `preparer`, `verifier`, `indexer`, `ocr`, `analyser`, `reinitialiser`, `arreter`.
 
 > Peuvent bloquer malgré l'absence de droits admin : AppLocker, un proxy, l'antivirus. Prévenir le service informatique avant un test sur un poste de production.
 
@@ -175,6 +175,12 @@ chemin = '\\nas\infra\ged'
 pole = "Infra"
 ```
 
+### Première mise en route
+
+1. **`ged preparer`** parcourt les sources sans ouvrir aucun fichier (noms, tailles, dates : quelques minutes) et ouvre une page sur http://127.0.0.1:8001 avec l'arborescence. Chaque dossier affiche son nombre de fichiers et de sous-dossiers, coloré selon son poids dans la source, son volume et l'année du fichier le plus récent. Des indices signalent les dossiers à vérifier (nom technique, programmes, sauvegardes, rien de modifié depuis 5 ans, dossier illisible) sans rien décocher d'office. Tout est coché : on décoche ce qu'on ne veut pas indexer, on valide, et les choix sont écrits dans `exclusions.toml` (non versionné, lu en plus de `exclure`). La commande peut être relancée : les choix précédents sont repris.
+2. **`ged verifier`** contrôle la base, l'accès aux sources (et à leurs droits de partage), les exclusions, la taxonomie, l'OCR, LibreOffice, le port de l'interface et les groupes d'administration. Il mesure aussi, avec le compte qui lance la GED, la remontée des groupes (noms, hiérarchie dans l'Active Directory, durée), et lit propriétaire et droits d'un échantillon de fichiers par source (200 au plus, 5 par dossier, sans les ouvrir) : propriétaires principaux, fichiers aux droits illisibles (ils seraient masqués), temps de lecture par fichier. Code retour 1 en cas d'erreur.
+3. **`ged indexer`** lance l'indexation complète.
+
 Un dossier exclu sort de l'index au passage suivant de `ged indexer` (et y revient si le motif est retiré) ; son chemin s'affiche dans les filtres actifs quand on clique dessus dans l'arborescence.
 
 **Tags** : [`taxonomie.toml`](taxonomie.toml) associe à chaque libellé des mots-clés (préfixe `titre:` pour un mot qui ne compte que dans le nom ou le titre). `ged recalculer` réapplique les règles sans relire les fichiers ; `ged analyser` produit un rapport (dossiers, mots fréquents des noms, couverture des tags) pour la construire, et [`CLAUDE.md`](CLAUDE.md) décrit la marche à suivre avec Claude Code, si la politique du groupe l'autorise. La liste fournie est un premier jet à compléter avec les pôles.
@@ -207,6 +213,8 @@ duree_session_heures = 8      # un changement de groupe compte à la session sui
 ## Utilisation
 
 ```powershell
+uv run ged preparer            # choisir les dossiers à exclure (page sur http://127.0.0.1:8001)
+uv run ged verifier            # vérifier l'installation avant d'indexer
 uv run ged indexer             # nouveautés seulement (barre de progression, temps restant)
 uv run ged indexer --forcer    # relit tout (le texte OCR des fichiers inchangés est conservé)
 uv run ged ocr [--limite 50]   # scans en attente d'OCR, éventuellement par lots

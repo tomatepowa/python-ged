@@ -18,6 +18,14 @@ def main(argv: list[str] | None = None) -> None:
 
     commandes.add_parser("init-db", help="crée ou met à jour le schéma de la base")
 
+    p_preparer = commandes.add_parser(
+        "preparer", help="parcours rapide des sources et page pour choisir les dossiers à exclure (avant d'indexer)"
+    )
+    p_preparer.add_argument("--port", type=int, default=8001, help="port de la page (défaut : 8001)")
+    p_preparer.add_argument("--sans-navigateur", action="store_true", help="ne pas ouvrir la page automatiquement")
+
+    commandes.add_parser("verifier", help="vérifie l'installation : base, sources, outils, identification")
+
     p_indexer = commandes.add_parser("indexer", help="parcourt les sources et met à jour l'index")
     p_indexer.add_argument("--forcer", action="store_true", help="relit tous les fichiers, même inchangés")
     p_indexer.add_argument("--source", action="append", help="limiter à cette source (répétable)")
@@ -58,6 +66,28 @@ def main(argv: list[str] | None = None) -> None:
 
         initialiser(cfg.url_base)
         print("Schéma à jour.")
+
+    elif args.commande == "preparer":
+        import webbrowser
+
+        import uvicorn
+
+        from ged.preparation import parcourir_sources
+        from ged.web.preparation import creer_app_preparation
+
+        sources = parcourir_sources(cfg)
+        adresse = f"http://127.0.0.1:{args.port}"
+        print(f"\nPage de préparation : {adresse}  (Ctrl+C pour arrêter)")
+        if not args.sans_navigateur:
+            webbrowser.open(adresse)
+        # Ce poste seulement : la page écrit dans le dossier de la GED, sans identification
+        uvicorn.run(creer_app_preparation(cfg, sources), host="127.0.0.1", port=args.port, log_level="warning")
+
+    elif args.commande == "verifier":
+        from ged.verification import afficher, verifier
+
+        if not afficher(verifier(cfg)):
+            sys.exit(1)
 
     elif args.commande == "indexer":
         from ged.db import connecter, initialiser

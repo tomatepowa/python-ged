@@ -12,6 +12,8 @@ Le groupe n'a pas encore de politique sur l'IA. Les documents indexés sont inte
 - **Ne jamais interroger la base** (psql, scripts Python, `ged` hors des commandes listées
   ci-dessous) : elle contient le texte des documents.
 - **Ne pas lire config.toml** : il contient le mot de passe de la base.
+- **Ne pas lire exclusions.toml** (écrit par `ged preparer`) : chemins internes des partages.
+  Ne pas lancer `ged preparer` ni `ged verifier` sur la vraie configuration : c'est à l'utilisateur.
 - Ne travailler que sur le code, `taxonomie.toml` et le rapport `analyse-taxonomie.md`.
 
 ## Construire ou ajuster la taxonomie

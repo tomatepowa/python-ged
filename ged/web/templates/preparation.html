@@ -1,0 +1,126 @@
+{% extends "base_preparation.html" %}
+{# Un dossier de l'arborescence et ses sous-dossiers (repliés sous le premier niveau) #}
+{% macro noeud(d, total, profondeur, alertes_parent={}) %}
+{% set v = vue(d, total, alertes_parent) %}
+<li class="dossier-prep{% if not v.coche %} exclu{% endif %}" data-fichiers="{{ d.fichiers }}">
+  <div class="ligne-prep">
+    {% if d.enfants %}<button type="button" class="plier" aria-expanded="{{ 'true' if profondeur == 0 else 'false' }}" title="Afficher ou masquer les sous-dossiers">{{ "▾" if profondeur == 0 else "▸" }}</button>{% else %}<span class="plier"></span>{% endif %}
+    {# La racine d'une source n'a pas de case : une source se retire dans config.toml #}
+    {% if profondeur == 0 %}<span class="nom-prep racine-prep">{{ d.nom }}</span>{% else %}
+    <label>
+      <input type="checkbox" name="garder" value="{{ d.id }}"{% if v.coche %} checked{% endif %}{% if v.verrouille %} disabled{% endif %}>
+      <span class="nom-prep">{{ d.nom }}</span>
+    </label>{% endif %}
+    <span class="compteur niveau-{{ 0 if profondeur == 0 else v.niveau }}" title="Fichiers que l'indexation lira, sous-dossiers compris">{{ d.fichiers | nombre }} fichier{{ "s" if d.fichiers > 1 }}{% if d.sous_dossiers %} · {{ d.sous_dossiers | nombre }} dossier{{ "s" if d.sous_dossiers > 1 }}{% endif %}</span>
+    <span class="details-prep">{{ d.taille | taille }}{% if v.annee %} · récent : {{ v.annee }}{% endif %}</span>
+    {% if v.verrouille %}<span class="badge">exclu dans config.toml</span>{% endif %}
+    {% if d.inaccessible %}<span class="badge erreur" title="Le compte qui lance la GED ne peut pas lister ce dossier (ou un de ses sous-dossiers)">inaccessible</span>{% endif %}
+    {% for a in v.alertes %}<span class="badge alerte">{{ a }}</span>{% endfor %}
+  </div>
+  {% if d.enfants %}
+  <ul{% if profondeur > 0 %} hidden{% endif %}>
+    {% for e in d.enfants %}{{ noeud(e, total, profondeur + 1, v.toutes_alertes) }}{% endfor %}
+  </ul>
+  {% endif %}
+</li>
+{% endmacro %}
+
+{% block contenu %}
+<h1>Dossiers à indexer</h1>
+<p>Tout est coché : <strong>décochez les dossiers à ne pas indexer</strong> (applications, sauvegardes,
+archives sans intérêt…), puis validez. Les choix sont écrits dans <code>{{ fichier.name }}</code> ; rien
+n'est indexé ici, et aucun fichier des partages n'est ouvert.</p>
+<p class="legende-prep">
+  Poids dans la source :
+  <span class="compteur niveau-0">moins de 1 %</span>
+  <span class="compteur niveau-1">1 à 5 %</span>
+  <span class="compteur niveau-2">5 à 20 %</span>
+  <span class="compteur niveau-3">20 % et plus</span>
+  · <span class="badge alerte">à vérifier</span> : simple indice, rien n'est décoché d'office
+</p>
+
+<form method="post" action="/valider" id="preparation">
+  <input type="hidden" name="jeton" value="{{ jeton }}">
+  <div class="arbre-actions">
+    <button type="button" class="bouton secondaire" data-tout="deplier">Tout déplier</button>
+    <button type="button" class="bouton secondaire" data-tout="replier">Tout replier</button>
+    <button type="button" class="bouton secondaire" data-tout="alertes">Déplier jusqu'aux dossiers à vérifier</button>
+  </div>
+  {% for nom, arbre in sources %}
+  <section class="source-prep">
+    <h2>{{ nom }} <span class="chemin">{{ arbre.chemin }}</span></h2>
+    {% if arbre.inaccessible and not arbre.enfants and not arbre.fichiers %}
+    <p class="avertissement">Source inaccessible : vérifiez le chemin et les droits du compte qui lance la GED.</p>
+    {% else %}
+    <ul class="arbre-prep">{{ noeud(arbre, arbre.fichiers, 0) }}</ul>
+    {% endif %}
+  </section>
+  {% endfor %}
+  <div class="barre-validation">
+    <span id="bilan" aria-live="polite"></span>
+    <button type="submit" class="bouton">Valider les exclusions</button>
+  </div>
+</form>
+
+<script>
+(() => {
+  const formulaire = document.getElementById('preparation');
+  const bilan = document.getElementById('bilan');
+  const total = [...formulaire.querySelectorAll('.arbre-prep > li')]
+    .reduce((somme, li) => somme + Number(li.dataset.fichiers), 0);
+  const nombre = (n) => n.toLocaleString('fr-FR');
+
+  function plier(bouton, ouvrir) {
+    const liste = bouton.closest('li').querySelector(':scope > ul');
+    liste.hidden = !ouvrir;
+    bouton.setAttribute('aria-expanded', String(ouvrir));
+    bouton.textContent = ouvrir ? '▾' : '▸';
+  }
+
+  // Fichiers écartés : ceux des dossiers décochés les plus hauts (un sous-dossier d'un dossier
+  // décoché est déjà compté avec lui)
+  function mettreAJour() {
+    let dossiers = 0, fichiers = 0;
+    for (const li of formulaire.querySelectorAll('li.dossier-prep.exclu')) {
+      if (li.parentElement.closest('li.dossier-prep.exclu')) continue;
+      dossiers += 1;
+      fichiers += Number(li.dataset.fichiers);
+    }
+    bilan.textContent = dossiers
+      ? `${nombre(dossiers)} dossier${dossiers > 1 ? 's' : ''} exclu${dossiers > 1 ? 's' : ''} : `
+        + `${nombre(total - fichiers)} fichiers à indexer sur ${nombre(total)}`
+      : `Tout sera indexé : ${nombre(total)} fichiers`;
+  }
+
+  formulaire.addEventListener('change', (e) => {
+    if (e.target.name !== 'garder') return;
+    e.target.closest('li').classList.toggle('exclu', !e.target.checked);
+    mettreAJour();
+  });
+
+  formulaire.addEventListener('click', (e) => {
+    const bouton = e.target.closest('button.plier');
+    if (bouton) {
+      plier(bouton, bouton.getAttribute('aria-expanded') !== 'true');
+      return;
+    }
+    const tout = e.target.closest('[data-tout]');
+    if (!tout) return;
+    const boutons = formulaire.querySelectorAll('button.plier');
+    if (tout.dataset.tout === 'alertes') {
+      // Replie tout, puis ouvre le chemin menant à chaque dossier signalé
+      boutons.forEach((b) => plier(b, false));
+      for (const alerte of formulaire.querySelectorAll('.badge.alerte, .badge.erreur')) {
+        for (let li = alerte.closest('li').parentElement.closest('li'); li; li = li.parentElement.closest('li')) {
+          plier(li.querySelector(':scope > .ligne-prep > button.plier'), true);
+        }
+      }
+      return;
+    }
+    boutons.forEach((b) => plier(b, tout.dataset.tout === 'deplier'));
+  });
+
+  mettreAJour();
+})();
+</script>
+{% endblock %}

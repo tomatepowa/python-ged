@@ -22,7 +22,12 @@ class Config:
     hote: str = "127.0.0.1"
     port: int = 8000
     taille_max_mo: int = 100
+    # Motifs d'exclusion appliqués : ceux de config.toml, puis ceux d'exclusions.toml
     exclure: list[str] = field(default_factory=list)
+    # Ceux de config.toml seuls (écrits à la main : « ged preparer » ne peut pas les retirer)
+    exclure_config: list[str] = field(default_factory=list)
+    # Fichier écrit par « ged preparer » (dossiers décochés)
+    fichier_exclusions: Path = Path("exclusions.toml")
     ocr_active: bool = False
     tessdata: str | None = None
     langue_ocr: str = "fra"
@@ -38,6 +43,20 @@ class Config:
     # Groupes (« DOMAINE\groupe » ou SID) qui voient tous les documents et l'état de l'index
     groupes_admin: list[str] = field(default_factory=list)
     duree_session_heures: float = 8
+
+
+def lire_exclusions(fichier: Path) -> list[str]:
+    """Motifs du fichier d'exclusions écrit par « ged preparer » ([] s'il n'existe pas encore)."""
+    if not fichier.is_file():
+        return []
+    try:
+        with fichier.open("rb") as f:
+            motifs = tomllib.load(f).get("exclure", [])
+    except tomllib.TOMLDecodeError as exc:
+        raise SystemExit(f"{fichier} illisible : {exc}\nCorrigez-le ou relancez « ged preparer ».") from exc
+    if not isinstance(motifs, list) or not all(isinstance(m, str) for m in motifs):
+        raise SystemExit(f"{fichier} : « exclure » doit être une liste de chemins entre guillemets.")
+    return motifs
 
 
 def charger(chemin: str | Path | None = None) -> Config:
@@ -65,6 +84,9 @@ def charger(chemin: str | Path | None = None) -> Config:
     if protocole.lower() not in ("ntlm", "negotiate"):
         raise SystemExit(f'{fichier} : [authentification] protocole doit valoir "NTLM" ou "Negotiate".')
 
+    exclure_config = list(indexation.get("exclure", []))
+    fichier_exclusions = fichier.parent / indexation.get("fichier_exclusions", "exclusions.toml")
+
     sources = [
         Source(nom=s["nom"], chemin=Path(s["chemin"]), pole=s.get("pole", s["nom"]))
         for s in donnees.get("sources", [])
@@ -76,7 +98,9 @@ def charger(chemin: str | Path | None = None) -> Config:
         hote=serveur.get("hote", "127.0.0.1"),
         port=int(serveur.get("port", 8000)),
         taille_max_mo=int(indexation.get("taille_max_mo", 100)),
-        exclure=list(indexation.get("exclure", [])),
+        exclure=exclure_config + lire_exclusions(fichier_exclusions),
+        exclure_config=exclure_config,
+        fichier_exclusions=fichier_exclusions,
         ocr_active=bool(ocr.get("active", False)),
         tessdata=ocr.get("tessdata"),
         langue_ocr=ocr.get("langue", "fra"),

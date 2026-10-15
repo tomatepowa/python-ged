@@ -11,6 +11,9 @@ port = 8000
 
 [indexation]
 taille_max_mo = 100     # au-delà, le fichier est référencé mais son contenu n'est pas lu
+# Dossiers à ne pas indexer : le plus simple est « ged preparer », qui affiche l'arborescence des
+# sources et écrit les dossiers décochés dans exclusions.toml (fichier lu en plus de la liste ci-dessous).
+# fichier_exclusions = "exclusions.toml"
 # Motifs supplémentaires à ignorer (syntaxe fnmatch, sur le chemin complet, majuscules indifférentes).
 # Un dossier visé n'est pas parcouru du tout : idéal pour les dossiers d'applications.
 # Les programmes et bibliothèques (.exe, .dll, .jar, .msi...) sont déjà ignorés partout.

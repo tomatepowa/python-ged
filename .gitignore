@@ -9,6 +9,8 @@ build/
 
 # Configuration locale (contient le mot de passe de la base)
 config.toml
+# Dossiers exclus choisis avec « ged preparer » (chemins internes)
+exclusions.toml
 
 # Résultats de l'outil d'inventaire (contiennent des chemins internes)
 inventaire_*/

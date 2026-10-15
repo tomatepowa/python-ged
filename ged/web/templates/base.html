@@ -20,6 +20,14 @@
     {% block contenu %}{% endblock %}
   </main>
   <script>
+    // Ajout d'un tag (administrateurs) : choisir un tag existant remplit sa catégorie
+    document.addEventListener('input', (e) => {
+      const libelle = e.target.closest('[data-libelle-tag]');
+      if (!libelle) return;
+      const option = [...(libelle.list?.options || [])].find((o) => o.value === libelle.value);
+      const categorie = libelle.parentElement.querySelector('input[name=categorie]');
+      if (option && categorie) categorie.value = option.dataset.categorie;
+    });
     // Copie du chemin réseau, à coller dans l'explorateur Windows
     document.addEventListener('click', async (e) => {
       const bouton = e.target.closest('[data-copier]');

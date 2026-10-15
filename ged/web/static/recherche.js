@@ -466,7 +466,10 @@
   });
 
   // Le champ « Personne » applique son filtre lui-même (au choix ou sur Entrée)
-  formulaire.addEventListener('change', (e) => { if (e.target !== champ && e.target !== champPersonne) chercher(); });
+  // Les champs d'un autre formulaire affichés dans les résultats (tags du dossier) ne relancent pas la recherche
+  formulaire.addEventListener('change', (e) => {
+    if (e.target.form === formulaire && e.target !== champ && e.target !== champPersonne) chercher();
+  });
   formulaire.addEventListener('submit', (e) => {
     e.preventDefault();
     fermerSuggestions();

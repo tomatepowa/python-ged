@@ -25,7 +25,7 @@ def initialiser(url: str) -> None:
 
 
 # Tables vidées par « ged reinitialiser » : tout ce que l'indexation remplit
-TABLES_INDEX = ("document_tag", "document", "tag", "vocabulaire", "source")
+TABLES_INDEX = ("document_tag", "tag_retire", "tag_dossier", "document", "tag", "vocabulaire", "source")
 
 
 def vider_index(conn: psycopg.Connection) -> None:

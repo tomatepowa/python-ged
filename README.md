@@ -185,6 +185,8 @@ Un dossier exclu sort de l'index au passage suivant de `ged indexer` (et y revie
 
 **Tags** : [`taxonomie.toml`](taxonomie.toml) associe à chaque libellé des mots-clés (préfixe `titre:` pour un mot qui ne compte que dans le nom ou le titre). `ged recalculer` réapplique les règles sans relire les fichiers ; `ged analyser` produit un rapport (dossiers, mots fréquents des noms, couverture des tags) pour la construire, et [`CLAUDE.md`](CLAUDE.md) décrit la marche à suivre avec Claude Code, si la politique du groupe l'autorise. La liste fournie est un premier jet à compléter avec les pôles.
 
+**Tags posés à la main** (administrateurs de la GED). Sur la fiche d'un document : **×** retire un tag (la taxonomie ne le remettra plus), le champ **Ajouter** pose un tag existant ou en crée un (catégorie et libellé ; « veeam » retrouve « Veeam »). Après un clic sur un dossier, **Poser sur le dossier** donne le tag à tous ses documents, sous-dossiers compris, y compris ceux qui y arriveront. Ces choix sont gardés en base, respectés par `ged indexer` et `ged recalculer`, et perdus par `ged reinitialiser` (qui le signale). Un tag créé ainsi ne vit qu'en base : pour qu'il soit aussi posé automatiquement, l'ajouter à `taxonomie.toml` avec ses mots-clés.
+
 ## Droits d'accès et identification
 
 ```toml

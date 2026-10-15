@@ -130,3 +130,31 @@ CREATE OR REPLACE FUNCTION ged_peut_lire(acl jsonb, sids text[], sids_refus text
         LIMIT 1
     ), false)
     $$;
+
+-- Tags posés à la main (administrateurs de la GED, voir ged/tags_manuels.py).
+-- document_tag.origine : auto (taxonomie) | dossier (règle d'un dossier) | manuel (sur le document)
+ALTER TABLE document_tag ADD COLUMN IF NOT EXISTS pose_par text;
+ALTER TABLE document_tag ADD COLUMN IF NOT EXISTS pose_le timestamptz;
+-- Tag créé depuis l'interface (NULL : tag de taxonomie.toml)
+ALTER TABLE tag ADD COLUMN IF NOT EXISTS cree_par text;
+
+-- Tag d'un dossier : posé sur tous ses documents, sous-dossiers compris, y compris ceux qui y
+-- arriveront (appliqué à chaque indexation). chemin : relatif à la source, '' pour sa racine.
+CREATE TABLE IF NOT EXISTS tag_dossier (
+    id          serial PRIMARY KEY,
+    source_id   int NOT NULL REFERENCES source (id) ON DELETE CASCADE,
+    chemin      text NOT NULL,
+    tag_id      int NOT NULL REFERENCES tag (id) ON DELETE CASCADE,
+    pose_par    text,
+    pose_le     timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (source_id, chemin, tag_id)
+);
+
+-- Tag retiré à la main d'un document : la taxonomie et les règles de dossier ne le remettent plus
+CREATE TABLE IF NOT EXISTS tag_retire (
+    document_id bigint NOT NULL REFERENCES document (id) ON DELETE CASCADE,
+    tag_id      int NOT NULL REFERENCES tag (id) ON DELETE CASCADE,
+    retire_par  text,
+    retire_le   timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (document_id, tag_id)
+);

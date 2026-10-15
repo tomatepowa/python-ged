@@ -132,13 +132,19 @@ def main(argv: list[str] | None = None) -> None:
         print("Relisez-le avant de le partager : il peut contenir des noms de personnes ou de projets.")
 
     elif args.commande == "reinitialiser":
-        from ged.db import connecter, vider_index
+        from ged.db import connecter, initialiser, vider_index
+        from ged.tags_manuels import nb_poses_a_la_main
 
+        initialiser(cfg.url_base)
         with connecter(cfg.url_base) as conn:
             nb = conn.execute(
                 "SELECT (SELECT count(*) FROM document WHERE supprime_le IS NULL) AS documents, (SELECT count(*) FROM source) AS sources"
             ).fetchone()
             print(f"L'index contient {nb['documents']} documents ({nb['sources']} sources).")
+            main = nb_poses_a_la_main(conn)
+            if any(main.values()):
+                print(f"Le travail fait à la main sera perdu : {main['manuels']} tags posés sur des documents, "
+                      f"{main['retires']} tags retirés, {main['dossiers']} tags de dossiers.")
             print("Il sera entièrement vidé ; les fichiers des partages ne sont pas touchés.")
             if not args.oui and input("Tapez OUI pour confirmer : ").strip() != "OUI":
                 sys.exit("Abandon : rien n'a été modifié.")

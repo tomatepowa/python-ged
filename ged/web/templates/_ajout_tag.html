@@ -1,0 +1,15 @@
+{# Champs d'ajout d'un tag (administrateurs) : un tag existant, ou créé s'il n'existe pas encore.
+   `form_id` : formulaire auquel les rattacher quand ils sont affichés dans un autre formulaire
+   (le panneau du dossier est dans celui de la recherche). Choisir un tag de la liste remplit sa
+   catégorie (script de base.html). #}
+<span class="ajout-tag">
+  <input name="libelle" list="liste-tags" placeholder="Tag (ex. Veeam)" required maxlength="60" size="16"
+         autocomplete="off" data-libelle-tag{% if form_id %} form="{{ form_id }}"{% endif %}
+         title="Un tag de la liste, ou un nouveau libellé">
+  <input name="categorie" list="liste-categories" placeholder="Catégorie" required maxlength="60" size="10"
+         autocomplete="off"{% if form_id %} form="{{ form_id }}"{% endif %}
+         title="logiciel, secteur, type… ou une nouvelle catégorie">
+  <button type="submit" class="bouton secondaire" name="ajouter" value="1"{% if form_id %} form="{{ form_id }}"{% endif %}>＋ {{ libelle_bouton }}</button>
+  <datalist id="liste-tags">{% for t in choix_tags %}<option value="{{ t.libelle }}" data-categorie="{{ t.categorie }}">{{ t.categorie }}</option>{% endfor %}</datalist>
+  <datalist id="liste-categories">{% for c in categories %}<option value="{{ c }}"></option>{% endfor %}</datalist>
+</span>

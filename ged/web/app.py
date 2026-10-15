@@ -1,4 +1,8 @@
-"""Application web de recherche (lecture seule)."""
+"""Application web de recherche.
+
+Les fichiers des partages sont seulement lus. Seuls les tags posés à la main par les
+administrateurs de la GED modifient la base depuis l'interface (voir ged.tags_manuels).
+"""
 
 from __future__ import annotations
 
@@ -7,17 +11,18 @@ import mimetypes
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.concurrency import run_in_threadpool
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from ged import config as configuration
-from ged import documents
+from ged import documents, tags_manuels
 from ged.acces import FiltreAcces, Lecteur, diagnostic_acces, filtre_acces, sids_accordant
 from ged.annuaire import AnnuaireAD, nom_complet_local, organiser_groupes, prefixe_machine
 from ged.arborescence import construire_arbre_resultats, dossier_parent, fil_ariane
@@ -124,6 +129,28 @@ def libelle_du_dossier(conn, filtres: Filtres) -> str | None:
     if not cible:
         return None
     return " › ".join(filter(None, [documents.nom_source(conn, cible[0]) or "?", *cible[1].split("\\")]))
+
+
+async def formulaire_admin(request: Request) -> dict[str, str]:
+    """Champs d'un formulaire réservé aux administrateurs de la GED.
+
+    Refusé si la requête vient d'une autre page que la GED : un site malveillant ouvert dans le
+    navigateur d'un administrateur ne peut pas poser ou retirer des tags à sa place.
+    """
+    if not request.state.lecteur.admin:
+        raise HTTPException(403, "Réservé aux administrateurs de la GED")
+    provenance = request.headers.get("origin") or request.headers.get("referer") or ""
+    if urlsplit(provenance).netloc != request.url.netloc:
+        raise HTTPException(403, "Formulaire envoyé depuis une autre page que la GED")
+    champs = parse_qs((await request.body()).decode("utf-8"))
+    return {cle: valeurs[0].strip() for cle, valeurs in champs.items()}
+
+
+def tag_du_formulaire(conn, champs: dict[str, str], par: str) -> int:
+    """Tag choisi (tag_id) ou à créer (categorie + libelle)."""
+    if champs.get("tag_id", "").isdigit():
+        return int(champs["tag_id"])
+    return tags_manuels.trouver_ou_creer(conn, champs.get("categorie", ""), champs.get("libelle", ""), par)
 
 
 def refus_authentification(request: Request, entete: str | None) -> HTMLResponse:
@@ -235,11 +262,17 @@ def creer_app(
     def acces(request: Request, conn) -> FiltreAcces:
         return filtre_acces(conn, request.state.lecteur)
 
-    def contexte_resultats(filtres: Filtres, conn, acces: FiltreAcces) -> dict:
+    def contexte_resultats(filtres: Filtres, conn, acces: FiltreAcces, admin: bool = False) -> dict:
         contexte = {
             "tags_actifs": documents.tags_choisis(conn, filtres.tags),
             "libelle_dossier": libelle_du_dossier(conn, filtres),
         }
+        cible = filtres.dossier_cible()
+        if admin and cible:
+            # Tags du dossier affiché, modifiables par les administrateurs
+            contexte["regles_dossier"] = tags_manuels.regles_du_dossier(conn, *cible)
+            contexte["choix_tags"] = tags_manuels.tous_les_tags(conn)
+            contexte["categories"] = tags_manuels.categories(conn)
         return {**contexte, **contexte_vue(filtres, conn, acces)}
 
     def contexte_vue(filtres: Filtres, conn, acces: FiltreAcces) -> dict:
@@ -264,7 +297,7 @@ def creer_app(
     def accueil(request: Request, filtres: Annotated[Filtres, Depends(lire_filtres)]):
         with pool.connection() as conn:
             filtre = acces(request, conn)
-            contexte = contexte_resultats(filtres, conn, filtre)
+            contexte = contexte_resultats(filtres, conn, filtre, request.state.lecteur.admin)
             choix = facettes(conn, filtre)
             # Aucun document visible : dire pourquoi, plutôt qu'une recherche qui ne trouve jamais rien
             alerte_acces = None if any(p["nb"] for p in choix["poles"]) else diagnostic_acces(conn)
@@ -294,7 +327,7 @@ def creer_app(
     def resultats_seuls(request: Request, filtres: Annotated[Filtres, Depends(lire_filtres)]):
         """Fragment HTML de la liste de résultats, pour la recherche pendant la frappe."""
         with pool.connection() as conn:
-            contexte = contexte_resultats(filtres, conn, acces(request, conn))
+            contexte = contexte_resultats(filtres, conn, acces(request, conn), request.state.lecteur.admin)
         return templates.TemplateResponse(request, contexte["gabarit"], contexte)
 
     @app.get("/suggestions")
@@ -314,6 +347,9 @@ def creer_app(
         with pool.connection() as conn:
             # Document hors des droits de la personne : même réponse que s'il n'existait pas
             contenu = documents.fiche(conn, document_id, acces(request, conn))
+            if contenu and request.state.lecteur.admin:
+                contenu["choix_tags"] = tags_manuels.tous_les_tags(conn)
+                contenu["categories"] = tags_manuels.categories(conn)
         if not contenu:
             raise HTTPException(404, "Document inconnu")
         doc = contenu["doc"]
@@ -384,6 +420,57 @@ def creer_app(
         type_mime = mimetypes.guess_type(doc["nom"])[0] or "application/octet-stream"
         disposition = "inline" if doc["extension"] in AFFICHABLES else "attachment"
         return FileResponse(chemin, media_type=type_mime, filename=doc["nom"], content_disposition_type=disposition)
+
+    # --- Tags posés à la main (administrateurs) -------------------------------------------
+
+    @app.post("/document/{document_id}/tags")
+    async def tags_document(request: Request, document_id: int):
+        """Ajoute (tag existant ou nouveau) ou retire un tag d'un document."""
+        champs = await formulaire_admin(request)
+        par = request.state.lecteur.compte or "?"
+
+        def appliquer() -> str | None:
+            with pool.connection() as conn:
+                if not conn.execute("SELECT 1 FROM document WHERE id = %s", (document_id,)).fetchone():
+                    raise HTTPException(404, "Document inconnu")
+                if champs.get("retirer", "").isdigit():
+                    tags_manuels.retirer(conn, document_id, int(champs["retirer"]), par)
+                    return None
+                try:
+                    tags_manuels.ajouter(conn, document_id, tag_du_formulaire(conn, champs, par), par)
+                except tags_manuels.TagInvalide as exc:
+                    return str(exc)
+            return None
+
+        erreur = await run_in_threadpool(appliquer)
+        suite = f"/document/{document_id}" + (f"?{urlencode({'erreur_tag': erreur})}" if erreur else "") + "#tags"
+        return RedirectResponse(suite, status_code=303)
+
+    @app.post("/dossier/tags")
+    async def tags_dossier(request: Request):
+        """Pose un tag sur un dossier (tous ses documents, présents et futurs) ou le retire."""
+        champs = await formulaire_admin(request)
+        par = request.state.lecteur.compte or "?"
+        filtres = Filtres(dossier=champs.get("dossier", ""))
+        cible = filtres.dossier_cible()
+        if not cible:
+            raise HTTPException(400, "Dossier manquant")
+
+        def appliquer() -> str | None:
+            with pool.connection() as conn:
+                if champs.get("retirer", "").isdigit():
+                    tags_manuels.retirer_du_dossier(conn, int(champs["retirer"]))
+                    return None
+                try:
+                    tag = tag_du_formulaire(conn, champs, par)
+                except tags_manuels.TagInvalide as exc:
+                    return str(exc)
+                tags_manuels.ajouter_au_dossier(conn, *cible, tag, par)
+            return None
+
+        erreur = await run_in_threadpool(appliquer)
+        suite = "/?" + filtres.lien() + (f"&{urlencode({'erreur_tag': erreur})}" if erreur else "")
+        return RedirectResponse(suite, status_code=303)
 
     @app.get("/stats", response_class=HTMLResponse)
     def stats(request: Request):

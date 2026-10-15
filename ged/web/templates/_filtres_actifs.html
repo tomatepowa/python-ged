@@ -42,5 +42,22 @@
   {% for t in tags_actifs %}« {{ t.libelle }} »{{ " et " if not loop.last }}{% endfor %} : retirez l'un de ces filtres.</p>
 {% endif %}
 {% endif %}
+{% if regles_dossier is defined %}
+{# Tags du dossier affiché (administrateurs) : posés sur tous ses documents, sous-dossiers compris,
+   y compris ceux qui y arriveront. Les champs appartiennent au formulaire #form-tags-dossier
+   (placé hors de celui de la recherche) ; l'ajout vient en premier dans le code pour que
+   la touche Entrée ajoute au lieu de retirer, mais s'affiche en dernier. #}
+<div class="tags-dossier">
+  <span class="note">Tags du dossier :</span>
+  <input type="hidden" name="dossier" value="{{ filtres.dossier }}" form="form-tags-dossier">
+  {% with form_id="form-tags-dossier", libelle_bouton="Poser sur le dossier" %}{% include "_ajout_tag.html" %}{% endwith %}
+  {% for r in regles_dossier %}
+  <span class="tag-pose"><span class="badge tag pose" title="{{ r.categorie }} – posé sur « {{ r.chemin or 'racine' }} »{{ ' par ' ~ r.pose_par if r.pose_par }} – porté par {{ r.nb }} document{{ 's' if r.nb > 1 }}">{{ r.libelle }}</span>
+    {%- if r.herite %}<span class="note petit"> (dossier parent)</span>
+    {%- else %}<button type="submit" form="form-tags-dossier" formnovalidate name="retirer" value="{{ r.id }}" class="retrait-tag" title="Retirer « {{ r.libelle }} » de ce dossier et de ses {{ r.nb }} documents (sauf ceux qui le tiennent d'ailleurs)">×</button>{% endif %}</span>
+  {% else %}<span class="note">aucun</span>{% endfor %}
+  {% if request.query_params.erreur_tag %}<span class="avertissement">{{ request.query_params.erreur_tag }}</span>{% endif %}
+</div>
+{% endif %}
 <script type="application/json" id="compte-tags">{{ resultats.compte_tags | tojson }}</script>
 <script type="application/json" id="compte-mois">{{ resultats.compte_mois | tojson }}</script>

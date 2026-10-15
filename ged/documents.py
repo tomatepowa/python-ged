@@ -34,7 +34,7 @@ def fiche(conn: psycopg.Connection, document_id: int, acces: FiltreAcces) -> dic
     if not doc:
         return None
     tags = conn.execute(
-        "SELECT t.id, t.categorie, t.libelle, dt.origine FROM document_tag dt JOIN tag t ON t.id = dt.tag_id "
+        "SELECT t.id, t.categorie, t.libelle, dt.origine, dt.pose_par, dt.pose_le FROM document_tag dt JOIN tag t ON t.id = dt.tag_id "
         "WHERE dt.document_id = %s ORDER BY t.categorie, t.libelle",
         (document_id,),
     ).fetchall()

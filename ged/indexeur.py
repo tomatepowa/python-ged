@@ -23,6 +23,7 @@ from ged.droits import Securite, lire_partage, lire_securite
 from ged.extraction import Resultat, extraire, famille
 from ged.ocr import ocr, texte_exploitable
 from ged.progression import Inventaire, Progression
+from ged.tags_manuels import appliquer_regles_document
 from ged.taxonomie import Taxonomie
 from ged.texte import code_document
 
@@ -453,14 +454,19 @@ class Indexeur:
     # --- Tags ---------------------------------------------------------------------------
 
     def _appliquer_tags(self, document_id: int, nom: str, contenu: str) -> None:
-        """Remplace les tags automatiques ; les tags posés à la main sont conservés."""
-        self.conn.execute("DELETE FROM document_tag WHERE document_id = %s AND origine = 'auto'", (document_id,))
+        """Remplace les tags de la taxonomie et des dossiers ; ceux posés à la main sont conservés,
+        et ceux retirés à la main ne reviennent pas (voir ged.tags_manuels)."""
+        self.conn.execute(
+            "DELETE FROM document_tag WHERE document_id = %s AND origine IN ('auto', 'dossier')", (document_id,)
+        )
         for tag in self.taxonomie.proposer(nom, contenu):
             self.conn.execute(
-                "INSERT INTO document_tag (document_id, tag_id, origine) VALUES (%s, %s, 'auto') "
+                "INSERT INTO document_tag (document_id, tag_id, origine) SELECT %(doc)s, %(tag)s, 'auto' "
+                "WHERE NOT EXISTS (SELECT 1 FROM tag_retire WHERE document_id = %(doc)s AND tag_id = %(tag)s) "
                 "ON CONFLICT DO NOTHING",
-                (document_id, self._id_tag(tag.categorie, tag.libelle)),
+                {"doc": document_id, "tag": self._id_tag(tag.categorie, tag.libelle)},
             )
+        appliquer_regles_document(self.conn, document_id)
 
     def _id_tag(self, categorie: str, libelle: str) -> int:
         cle = (categorie, libelle)

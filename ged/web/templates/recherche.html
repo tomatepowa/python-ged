@@ -107,6 +107,9 @@
     </section>
   </div>
 </form>
+{# Tags du dossier affiché (administrateurs) : ses champs, dans les résultats, y sont rattachés
+   par l'attribut form (un formulaire ne peut pas en contenir un autre) #}
+{% if request.state.lecteur.admin %}<form id="form-tags-dossier" method="post" action="/dossier/tags"></form>{% endif %}
 
 <script src="{{ url_for('static', path='recherche.js') }}?v={{ version_statique }}"></script>
 {% endblock %}

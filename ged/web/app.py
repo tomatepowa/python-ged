@@ -187,7 +187,7 @@ def creer_app(
 
         @app.middleware("http")
         async def authentifier(request: Request, suite):
-            if request.url.path.startswith("/static/"):
+            if request.url.path.startswith("/static/") or request.url.path == "/favicon.ico":
                 return await suite(request)
             lecteur = auth.lecteur_de_session(request.cookies.get(COOKIE))
             if lecteur:
@@ -279,6 +279,11 @@ def creer_app(
             "recherche.html",
             {**contexte, "choix": choix, "tags_par_categorie": tags_par_categorie, "alerte_acces": alerte_acces},
         )
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    def favicon():
+        """Les navigateurs demandent /favicon.ico d'office, même si la page en déclare une autre."""
+        return FileResponse(ICI / "static" / "favicon.svg", media_type="image/svg+xml")
 
     @app.get("/connexion")
     def connexion(suite: str = "/"):

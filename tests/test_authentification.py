@@ -110,6 +110,14 @@ def test_fichiers_statiques_sans_identification(client):
     assert client.get("/static/style.css").status_code == 200
 
 
+def test_favicon_sans_identification(client):
+    # Demandée d'office par les navigateurs, y compris avant l'identification
+    reponse = client.get("/favicon.ico")
+    assert reponse.status_code == 200
+    assert reponse.headers["content-type"].startswith("image/svg+xml")
+    assert 'rel="icon"' in client.get("/").text   # déclarée aussi dans la page d'accueil
+
+
 def test_negociation_puis_session(client):
     defi = client.get("/stats", headers=ntlm(b"negociation"))
     assert defi.status_code == 401

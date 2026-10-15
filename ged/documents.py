@@ -34,7 +34,7 @@ def fiche(conn: psycopg.Connection, document_id: int, acces: FiltreAcces) -> dic
     if not doc:
         return None
     tags = conn.execute(
-        "SELECT t.id, t.categorie, t.libelle, dt.origine, dt.pose_par, dt.pose_le FROM document_tag dt JOIN tag t ON t.id = dt.tag_id "
+        "SELECT t.id, t.categorie, t.libelle, dt.origine, dt.pose_par, dt.pose_par_sid, dt.pose_le FROM document_tag dt JOIN tag t ON t.id = dt.tag_id "
         "WHERE dt.document_id = %s ORDER BY t.categorie, t.libelle",
         (document_id,),
     ).fetchall()
@@ -45,6 +45,14 @@ def fiche(conn: psycopg.Connection, document_id: int, acces: FiltreAcces) -> dic
         {"empreinte": doc["empreinte"], "id": document_id, **acces.parametres},
     ).fetchall() if doc["empreinte"] else []
     return {"doc": doc, "tags": tags, "doublons": doublons}
+
+
+def visible(conn: psycopg.Connection, document_id: int, acces: FiltreAcces) -> bool:
+    """Le document existe-t-il, et la personne a-t-elle le droit de le voir ?"""
+    return conn.execute(
+        f"SELECT 1 FROM document d WHERE d.id = %(id)s AND d.supprime_le IS NULL AND {acces.sql}",
+        {"id": document_id, **acces.parametres},
+    ).fetchone() is not None
 
 
 def fichier(conn: psycopg.Connection, document_id: int, acces: FiltreAcces) -> dict | None:

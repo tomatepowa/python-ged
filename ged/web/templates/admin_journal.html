@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block titre %}Journal des tags – GED DSI{% endblock %}
+
+{% block contenu %}
+<h1>Journal des tags</h1>
+<p class="note"><a href="/admin/tags">← Tags</a> · les {{ limite }} dernières actions{% if libelle_tag %} sur
+  <strong>{{ libelle_tag }}</strong> (<a href="/admin/journal{{ '?par=' ~ (par | urlencode) if par }}">tous les tags</a>){% endif %}.</p>
+
+<form method="get" action="/admin/journal" class="filtre-journal">
+  {% if tag %}<input type="hidden" name="tag" value="{{ tag }}">{% endif %}
+  <label>Personne
+    <select name="par" onchange="this.form.submit()">
+      <option value="">Tout le monde</option>
+      {% for p in personnes %}<option value="{{ p }}"{% if p == par %} selected{% endif %}>{{ p }}</option>{% endfor %}
+    </select>
+  </label>
+  <noscript><button type="submit" class="bouton secondaire">Filtrer</button></noscript>
+</form>
+
+{% if lignes %}
+<table>
+  <thead><tr><th>Date</th><th>Personne</th><th>Action</th><th>Tag</th><th>Document</th><th>Détail</th></tr></thead>
+  <tbody>
+  {% for l in lignes %}
+    <tr>
+      <td class="nombre">{{ l.le.astimezone().strftime("%d/%m/%Y %H:%M") }}</td>
+      <td><a href="/admin/journal?par={{ l.par | urlencode }}{{ '&tag=' ~ tag if tag }}">{{ l.par }}</a></td>
+      <td>{{ l.action }}</td>
+      <td>{% if l.tag_id and l.tag %}<a href="/admin/journal?tag={{ l.tag_id }}">{{ l.tag }}</a>{% else %}{{ l.tag or "—" }}{% endif %}</td>
+      <td class="chemin">{% if l.document_existe %}<a href="/document/{{ l.document_id }}">{{ l.document }}</a>{% else %}{{ l.document or "—" }}{% endif %}</td>
+      <td class="note">{{ l.detail or "" }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="note">Aucune action enregistrée.</p>
+{% endif %}
+{% endblock %}

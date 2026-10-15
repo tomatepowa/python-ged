@@ -1,7 +1,7 @@
 """Application web de recherche.
 
-Les fichiers des partages sont seulement lus. Seuls les tags posés à la main par les
-administrateurs de la GED modifient la base depuis l'interface (voir ged.tags_manuels).
+Les fichiers des partages sont seulement lus. Seuls les tags posés à la main et leur gestion
+par les administrateurs modifient la base depuis l'interface (voir ged.tags_manuels).
 """
 
 from __future__ import annotations
@@ -31,6 +31,7 @@ from ged.recherche import (
     DOCUMENTS_ARBRE_MAX, PAR_PAGE, ROLES, Filtres, chercher_personnes, facettes, mes_documents, rechercher,
     statistiques, suggerer,
 )
+from ged.taxonomie import Taxonomie
 from ged.web.authentification import (
     COOKIE, COOKIE_NAVIGATEUR, Authentification, AuthentificationRefusee, Negociateur, NegociateurSSPI,
     identification_sur_demande, sids_des_comptes,
@@ -131,13 +132,13 @@ def libelle_du_dossier(conn, filtres: Filtres) -> str | None:
     return " › ".join(filter(None, [documents.nom_source(conn, cible[0]) or "?", *cible[1].split("\\")]))
 
 
-async def formulaire_admin(request: Request) -> dict[str, str]:
-    """Champs d'un formulaire réservé aux administrateurs de la GED.
+async def formulaire(request: Request, admin: bool = False) -> dict[str, str]:
+    """Champs d'un formulaire qui modifie les tags (`admin` : réservé aux administrateurs).
 
     Refusé si la requête vient d'une autre page que la GED : un site malveillant ouvert dans le
-    navigateur d'un administrateur ne peut pas poser ou retirer des tags à sa place.
+    navigateur d'une personne ne peut pas poser ou retirer des tags à sa place.
     """
-    if not request.state.lecteur.admin:
+    if admin and not request.state.lecteur.admin:
         raise HTTPException(403, "Réservé aux administrateurs de la GED")
     provenance = request.headers.get("origin") or request.headers.get("referer") or ""
     if urlsplit(provenance).netloc != request.url.netloc:
@@ -146,11 +147,17 @@ async def formulaire_admin(request: Request) -> dict[str, str]:
     return {cle: valeurs[0].strip() for cle, valeurs in champs.items()}
 
 
-def tag_du_formulaire(conn, champs: dict[str, str], par: str) -> int:
-    """Tag choisi (tag_id) ou à créer (categorie + libelle)."""
-    if champs.get("tag_id", "").isdigit():
-        return int(champs["tag_id"])
-    return tags_manuels.trouver_ou_creer(conn, champs.get("categorie", ""), champs.get("libelle", ""), par)
+def entier(champs: dict[str, str], cle: str) -> int | None:
+    valeur = champs.get(cle, "")
+    return int(valeur) if valeur.isdigit() else None
+
+
+def avec_message(chemin: str, cle: str, texte: str | None) -> str:
+    """URL de retour après un formulaire, avec le message à afficher."""
+    if not texte:
+        return chemin
+    chemin, _, ancre = chemin.partition("#")
+    return chemin + ("&" if "?" in chemin else "?") + urlencode({cle: texte}) + (f"#{ancre}" if ancre else "")
 
 
 def refus_authentification(request: Request, entete: str | None) -> HTMLResponse:
@@ -272,7 +279,6 @@ def creer_app(
             # Tags du dossier affiché, modifiables par les administrateurs
             contexte["regles_dossier"] = tags_manuels.regles_du_dossier(conn, *cible)
             contexte["choix_tags"] = tags_manuels.tous_les_tags(conn)
-            contexte["categories"] = tags_manuels.categories(conn)
         return {**contexte, **contexte_vue(filtres, conn, acces)}
 
     def contexte_vue(filtres: Filtres, conn, acces: FiltreAcces) -> dict:
@@ -347,14 +353,15 @@ def creer_app(
         with pool.connection() as conn:
             # Document hors des droits de la personne : même réponse que s'il n'existait pas
             contenu = documents.fiche(conn, document_id, acces(request, conn))
-            if contenu and request.state.lecteur.admin:
+            if contenu:
                 contenu["choix_tags"] = tags_manuels.tous_les_tags(conn)
-                contenu["categories"] = tags_manuels.categories(conn)
         if not contenu:
             raise HTTPException(404, "Document inconnu")
         doc = contenu["doc"]
         dossier = dossier_parent(doc["chemin_relatif"])
         lecteur: Lecteur = request.state.lecteur
+        for tag in contenu["tags"]:
+            tag["retirable"] = tags_manuels.peut_retirer(lecteur, tag)
         # Ce qui donne à la personne le droit de voir ce document (vide pour un administrateur
         # de la GED que ses groupes n'autorisent pas, ou sans identification)
         sids = sids_accordant(doc["acces_sids"], doc["acces_ordre"], lecteur)
@@ -421,56 +428,131 @@ def creer_app(
         disposition = "inline" if doc["extension"] in AFFICHABLES else "attachment"
         return FileResponse(chemin, media_type=type_mime, filename=doc["nom"], content_disposition_type=disposition)
 
-    # --- Tags posés à la main (administrateurs) -------------------------------------------
+    # --- Tags posés à la main -------------------------------------------------------------
+
+    def taxonomie() -> Taxonomie:
+        # Relue à chaque fois : une modification de taxonomie.toml compte sans redémarrer
+        return Taxonomie.charger(cfg.taxonomie)
 
     @app.post("/document/{document_id}/tags")
     async def tags_document(request: Request, document_id: int):
-        """Ajoute (tag existant ou nouveau) ou retire un tag d'un document."""
-        champs = await formulaire_admin(request)
-        par = request.state.lecteur.compte or "?"
+        """Pose un tag existant sur le document, ou en retire un (voir tags_manuels.peut_retirer)."""
+        champs = await formulaire(request)
+        lecteur: Lecteur = request.state.lecteur
 
         def appliquer() -> str | None:
             with pool.connection() as conn:
-                if not conn.execute("SELECT 1 FROM document WHERE id = %s", (document_id,)).fetchone():
+                # Seulement sur un document que la personne a le droit de voir
+                if not documents.visible(conn, document_id, acces(request, conn)):
                     raise HTTPException(404, "Document inconnu")
-                if champs.get("retirer", "").isdigit():
-                    tags_manuels.retirer(conn, document_id, int(champs["retirer"]), par)
-                    return None
                 try:
-                    tags_manuels.ajouter(conn, document_id, tag_du_formulaire(conn, champs, par), par)
-                except tags_manuels.TagInvalide as exc:
+                    if (tag := entier(champs, "retirer")) is not None:
+                        tags_manuels.retirer(conn, document_id, tag, lecteur, taxonomie())
+                    elif (tag := entier(champs, "tag_id")) is not None:
+                        tags_manuels.ajouter(conn, document_id, tag, lecteur)
+                except (tags_manuels.TagInvalide, tags_manuels.RetraitRefuse) as exc:
                     return str(exc)
             return None
 
         erreur = await run_in_threadpool(appliquer)
-        suite = f"/document/{document_id}" + (f"?{urlencode({'erreur_tag': erreur})}" if erreur else "") + "#tags"
-        return RedirectResponse(suite, status_code=303)
+        return RedirectResponse(avec_message(f"/document/{document_id}#tags", "erreur_tag", erreur), status_code=303)
 
     @app.post("/dossier/tags")
     async def tags_dossier(request: Request):
         """Pose un tag sur un dossier (tous ses documents, présents et futurs) ou le retire."""
-        champs = await formulaire_admin(request)
-        par = request.state.lecteur.compte or "?"
+        champs = await formulaire(request, admin=True)
+        lecteur: Lecteur = request.state.lecteur
         filtres = Filtres(dossier=champs.get("dossier", ""))
         cible = filtres.dossier_cible()
         if not cible:
             raise HTTPException(400, "Dossier manquant")
 
-        def appliquer() -> str | None:
+        def appliquer() -> None:
             with pool.connection() as conn:
-                if champs.get("retirer", "").isdigit():
-                    tags_manuels.retirer_du_dossier(conn, int(champs["retirer"]))
-                    return None
-                try:
-                    tag = tag_du_formulaire(conn, champs, par)
-                except tags_manuels.TagInvalide as exc:
-                    return str(exc)
-                tags_manuels.ajouter_au_dossier(conn, *cible, tag, par)
-            return None
+                if (regle := entier(champs, "retirer")) is not None:
+                    tags_manuels.retirer_du_dossier(conn, regle, lecteur)
+                elif (tag := entier(champs, "tag_id")) is not None:
+                    tags_manuels.ajouter_au_dossier(conn, *cible, tag, lecteur)
 
-        erreur = await run_in_threadpool(appliquer)
-        suite = "/?" + filtres.lien() + (f"&{urlencode({'erreur_tag': erreur})}" if erreur else "")
-        return RedirectResponse(suite, status_code=303)
+        await run_in_threadpool(appliquer)
+        return RedirectResponse("/?" + filtres.lien(), status_code=303)
+
+    # --- Gestion des tags (administrateurs) -------------------------------------------------
+
+    def exiger_admin(request: Request) -> None:
+        if not request.state.lecteur.admin:
+            raise HTTPException(403, "Page réservée aux administrateurs de la GED")
+
+    def tags_de_la_taxonomie() -> set[tuple[str, str]]:
+        return {(t.categorie, t.libelle) for t in taxonomie().regles}
+
+    @app.get("/admin/tags", response_class=HTMLResponse)
+    def admin_tags(request: Request, message: str = "", erreur: str = ""):
+        exiger_admin(request)
+        de_la_taxonomie = tags_de_la_taxonomie()
+        with pool.connection() as conn:
+            tags = tags_manuels.tags_administres(conn)
+            categories = tags_manuels.categories(conn)
+        par_categorie: dict[str, list[dict]] = {}
+        for tag in tags:
+            tag["taxonomie"] = (tag["categorie"], tag["libelle"]) in de_la_taxonomie
+            par_categorie.setdefault(tag["categorie"], []).append(tag)
+        return templates.TemplateResponse(request, "admin_tags.html", {
+            "par_categorie": par_categorie, "tags": tags, "categories": categories,
+            "message": message, "erreur": erreur,
+        })
+
+    @app.post("/admin/tags")
+    async def admin_tags_modifier(request: Request):
+        """Crée, renomme, fusionne ou supprime un tag."""
+        champs = await formulaire(request, admin=True)
+        lecteur: Lecteur = request.state.lecteur
+        action, tag = champs.get("action", ""), entier(champs, "tag_id")
+        de_la_taxonomie = tags_de_la_taxonomie()
+
+        def appliquer() -> str:
+            with pool.connection() as conn:
+                if action == "creer":
+                    tags_manuels.creer(conn, champs.get("categorie", ""), champs.get("libelle", ""), lecteur)
+                    return "Tag créé."
+                ligne = conn.execute("SELECT categorie, libelle FROM tag WHERE id = %s", (tag,)).fetchone()
+                if not ligne:
+                    raise tags_manuels.TagInvalide("Ce tag n'existe plus.")
+                # Le recalcul suivant recréerait un tag de la taxonomie sous son ancien nom
+                if (ligne["categorie"], ligne["libelle"]) in de_la_taxonomie:
+                    raise tags_manuels.TagInvalide(
+                        f"« {ligne['libelle']} » vient de taxonomie.toml : c'est là qu'il se renomme ou se retire."
+                    )
+                if action == "renommer":
+                    tags_manuels.renommer(conn, tag, champs.get("categorie", ""), champs.get("libelle", ""), lecteur)
+                    return "Tag renommé."
+                if action == "fusionner":
+                    nb = tags_manuels.fusionner(conn, tag, entier(champs, "cible") or 0, lecteur)
+                    return f"Tags fusionnés ({nb} documents reportés)."
+                if action == "supprimer":
+                    nb = tags_manuels.supprimer(conn, tag, lecteur)
+                    return f"Tag supprimé ({nb} documents)."
+                raise tags_manuels.TagInvalide("Action inconnue.")
+
+        try:
+            message = await run_in_threadpool(appliquer)
+        except tags_manuels.TagInvalide as exc:
+            return RedirectResponse(avec_message("/admin/tags", "erreur", str(exc)), status_code=303)
+        return RedirectResponse(avec_message("/admin/tags", "message", message), status_code=303)
+
+    @app.get("/admin/journal", response_class=HTMLResponse)
+    def admin_journal(request: Request, par: str = "", tag: int | None = None):
+        exiger_admin(request)
+        with pool.connection() as conn:
+            lignes = tags_manuels.journal(conn, par, tag)
+            personnes = tags_manuels.personnes_du_journal(conn)
+            libelle_tag = conn.execute(
+                "SELECT libelle || ' (' || categorie || ')' AS nom FROM tag WHERE id = %s", (tag,)
+            ).fetchone() if tag else None
+        return templates.TemplateResponse(request, "admin_journal.html", {
+            "lignes": lignes, "personnes": personnes, "par": par, "tag": tag,
+            "libelle_tag": libelle_tag["nom"] if libelle_tag else None, "limite": tags_manuels.JOURNAL_MAX,
+        })
 
     @app.get("/stats", response_class=HTMLResponse)
     def stats(request: Request):

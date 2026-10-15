@@ -1,0 +1,15 @@
+{# Choix d'un tag existant, par catégorie (les tags se créent dans la page Tags des administrateurs).
+   `deja` : identifiants des tags déjà posés, absents de la liste. `form_id` : formulaire auquel
+   rattacher les champs quand ils sont affichés dans un autre formulaire (le panneau du dossier
+   est dans celui de la recherche). #}
+<span class="choix-tag">
+  <select name="tag_id" required{% if form_id %} form="{{ form_id }}"{% endif %} aria-label="Tag à poser">
+    <option value="">Choisir un tag…</option>
+    {% for categorie, groupe in choix_tags | rejectattr("id", "in", deja) | groupby("categorie") %}
+    <optgroup label="{{ categorie }}">
+      {% for t in groupe %}<option value="{{ t.id }}">{{ t.libelle }}</option>{% endfor %}
+    </optgroup>
+    {% endfor %}
+  </select>
+  <button type="submit" class="bouton secondaire" name="ajouter" value="1"{% if form_id %} form="{{ form_id }}"{% endif %}>＋ {{ libelle_bouton }}</button>
+</span>

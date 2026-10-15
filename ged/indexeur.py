@@ -23,7 +23,7 @@ from ged.droits import Securite, lire_partage, lire_securite
 from ged.extraction import Resultat, extraire, famille
 from ged.ocr import ocr, texte_exploitable
 from ged.progression import Inventaire, Progression
-from ged.tags_manuels import appliquer_regles_document
+from ged.tags_manuels import id_tag, reappliquer
 from ged.taxonomie import Taxonomie
 from ged.texte import code_document
 
@@ -454,26 +454,13 @@ class Indexeur:
     # --- Tags ---------------------------------------------------------------------------
 
     def _appliquer_tags(self, document_id: int, nom: str, contenu: str) -> None:
-        """Remplace les tags de la taxonomie et des dossiers ; ceux posés à la main sont conservés,
-        et ceux retirés à la main ne reviennent pas (voir ged.tags_manuels)."""
-        self.conn.execute(
-            "DELETE FROM document_tag WHERE document_id = %s AND origine IN ('auto', 'dossier')", (document_id,)
-        )
-        for tag in self.taxonomie.proposer(nom, contenu):
-            self.conn.execute(
-                "INSERT INTO document_tag (document_id, tag_id, origine) SELECT %(doc)s, %(tag)s, 'auto' "
-                "WHERE NOT EXISTS (SELECT 1 FROM tag_retire WHERE document_id = %(doc)s AND tag_id = %(tag)s) "
-                "ON CONFLICT DO NOTHING",
-                {"doc": document_id, "tag": self._id_tag(tag.categorie, tag.libelle)},
-            )
-        appliquer_regles_document(self.conn, document_id)
+        """Tags de la taxonomie et des dossiers ; ceux posés ou retirés à la main sont respectés
+        (voir ged.tags_manuels)."""
+        proposes = [self._id_tag(t.categorie, t.libelle) for t in self.taxonomie.proposer(nom, contenu)]
+        reappliquer(self.conn, document_id, proposes)
 
     def _id_tag(self, categorie: str, libelle: str) -> int:
         cle = (categorie, libelle)
         if cle not in self._ids_tags:
-            self._ids_tags[cle] = self.conn.execute(
-                "INSERT INTO tag (categorie, libelle) VALUES (%s, %s) "
-                "ON CONFLICT (categorie, libelle) DO UPDATE SET libelle = EXCLUDED.libelle RETURNING id",
-                cle,
-            ).fetchone()["id"]
+            self._ids_tags[cle] = id_tag(self.conn, categorie, libelle)
         return self._ids_tags[cle]

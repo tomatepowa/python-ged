@@ -44,14 +44,14 @@
           {% for t in tags %}
             {% set origine = {"auto": "proposé par la taxonomie", "dossier": "posé sur le dossier" ~ (" par " ~ t.pose_par if t.pose_par else ""), "manuel": "posé à la main" ~ (" par " ~ t.pose_par if t.pose_par else "") ~ (" le " ~ (t.pose_le | date) if t.pose_le else "")}.get(t.origine, t.origine) %}
             <span class="tag-pose"><a class="badge tag{% if t.origine != 'auto' %} pose{% endif %}" href="/?tag={{ t.id }}" title="{{ t.categorie }} – {{ origine }} – voir tous les documents">{{ t.libelle }}</a>
-            {%- if admin %}<form method="post" action="/document/{{ doc.id }}/tags" class="retrait-tag"><button type="submit" name="retirer" value="{{ t.id }}" title="Retirer « {{ t.libelle }} » de ce document (il ne reviendra pas au prochain recalcul)">×</button></form>{% endif %}</span>
+            {%- if t.retirable %}<form method="post" action="/document/{{ doc.id }}/tags" class="retrait-tag"><button type="submit" name="retirer" value="{{ t.id }}" title="{{ 'Retirer « ' ~ t.libelle ~ ' » de ce document (il ne reviendra pas au prochain recalcul)' if admin else 'Retirer le tag « ' ~ t.libelle ~ ' » que vous avez posé' }}">×</button></form>{% endif %}</span>
           {% else %}<span class="note">aucun</span>{% endfor %}
-          {% if admin %}
+          {# Tout le monde peut poser un tag existant ; on retire ceux qu'on a posés (l'administrateur, tous) #}
           <form method="post" action="/document/{{ doc.id }}/tags" class="form-tag">
-            {% with form_id=None, libelle_bouton="Ajouter" %}{% include "_ajout_tag.html" %}{% endwith %}
+            {% with form_id=None, libelle_bouton="Ajouter", deja=tags | map(attribute="id") | list %}{% include "_choix_tag.html" %}{% endwith %}
+            {% if admin %}<a class="note petit" href="/admin/tags">Gérer les tags</a>{% endif %}
           </form>
           {% if request.query_params.erreur_tag %}<p class="avertissement">{{ request.query_params.erreur_tag }}</p>{% endif %}
-          {% endif %}
         </dd>
       </dl>
     </section>

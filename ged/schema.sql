@@ -158,3 +158,23 @@ CREATE TABLE IF NOT EXISTS tag_retire (
     retire_le   timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (document_id, tag_id)
 );
+
+-- Tags posés par les utilisateurs : SID de l'auteur, pour qu'il puisse retirer les siens
+ALTER TABLE document_tag ADD COLUMN IF NOT EXISTS pose_par_sid text;
+ALTER TABLE tag ADD COLUMN IF NOT EXISTS cree_le timestamptz;
+
+-- Journal des tags posés, retirés, créés, renommés, fusionnés, supprimés (page d'administration).
+-- Sans clé étrangère : il garde l'historique d'un tag ou d'un document disparu (libellé et nom
+-- recopiés), et « ged reinitialiser » ne le vide pas.
+CREATE TABLE IF NOT EXISTS journal_tag (
+    id          bigserial PRIMARY KEY,
+    le          timestamptz NOT NULL DEFAULT now(),
+    par         text NOT NULL,
+    action      text NOT NULL,
+    tag_id      int,
+    tag         text,
+    document_id bigint,
+    document    text,
+    detail      text
+);
+CREATE INDEX IF NOT EXISTS journal_tag_le_idx ON journal_tag (le DESC);

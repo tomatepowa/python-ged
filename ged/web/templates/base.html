@@ -12,7 +12,7 @@
     <a class="logo" href="/">GED <span>DSI</span></a>
     <nav>
       <a href="/">Recherche</a>
-      {% if request.state.lecteur.admin %}<a href="/stats">État de l'index</a>{% endif %}
+      {% if request.state.lecteur.admin %}<a href="/admin/tags">Tags</a><a href="/stats">État de l'index</a>{% endif %}
     </nav>
     {% if request.state.lecteur.compte %}<a class="compte" href="/moi" title="Documents affichés selon vos droits Windows : voir vos groupes">{{ request.state.lecteur.compte }}{% if request.state.lecteur.admin %} · admin{% endif %}</a>{% endif %}
   </header>
@@ -20,14 +20,6 @@
     {% block contenu %}{% endblock %}
   </main>
   <script>
-    // Ajout d'un tag (administrateurs) : choisir un tag existant remplit sa catégorie
-    document.addEventListener('input', (e) => {
-      const libelle = e.target.closest('[data-libelle-tag]');
-      if (!libelle) return;
-      const option = [...(libelle.list?.options || [])].find((o) => o.value === libelle.value);
-      const categorie = libelle.parentElement.querySelector('input[name=categorie]');
-      if (option && categorie) categorie.value = option.dataset.categorie;
-    });
     // Copie du chemin réseau, à coller dans l'explorateur Windows
     document.addEventListener('click', async (e) => {
       const bouton = e.target.closest('[data-copier]');

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block titre %}Tags – GED DSI{% endblock %}
+
+{% block contenu %}
+<h1>Tags</h1>
+<p class="note">Les utilisateurs posent les tags de cette liste sur les documents qu'ils voient, et retirent ceux
+qu'ils ont posés. Les tags de <code>taxonomie.toml</code> se posent automatiquement d'après leurs mots-clés ; ils se
+renomment ou se retirent dans ce fichier. <a href="/admin/journal">Journal des tags →</a></p>
+{% if message %}<p class="confirmation">{{ message }}</p>{% endif %}
+{% if erreur %}<p class="avertissement">{{ erreur }}</p>{% endif %}
+
+<form method="post" action="/admin/tags" class="admin-tags creation-tag">
+  <input type="hidden" name="action" value="creer">
+  <strong>Nouveau tag :</strong>
+  <input name="libelle" placeholder="Libellé (ex. Veeam)" required maxlength="60" size="20">
+  <input name="categorie" list="liste-categories" placeholder="Catégorie" required maxlength="60" size="12"
+         title="logiciel, secteur, type… ou une nouvelle catégorie">
+  <datalist id="liste-categories">{% for c in categories %}<option value="{{ c }}"></option>{% endfor %}</datalist>
+  <button type="submit" class="bouton">Créer</button>
+</form>
+
+{% for categorie, groupe in par_categorie.items() %}
+<h2>{{ categorie }} <span class="note">({{ groupe | length }})</span></h2>
+<table class="admin-tags">
+  <thead><tr><th>Tag</th><th class="nombre">Documents</th><th>Origine</th><th></th></tr></thead>
+  <tbody>
+  {% for t in groupe %}
+    {% set total = t.nb_auto + t.nb_dossier + t.nb_manuel %}
+    <tr>
+      <td><a class="badge tag" href="/?tag={{ t.id }}" title="Voir ses documents">{{ t.libelle }}</a></td>
+      <td class="nombre" title="taxonomie : {{ t.nb_auto }} · dossiers : {{ t.nb_dossier }} ({{ t.nb_dossiers }} dossier{{ 's' if t.nb_dossiers > 1 }}) · à la main : {{ t.nb_manuel }}{% if t.nb_retires %} · retiré de {{ t.nb_retires }} document{{ 's' if t.nb_retires > 1 }}{% endif %}">
+        {{ total }}{% if t.nb_dossier or t.nb_manuel %} <span class="note petit">(dont {% if t.nb_manuel %}{{ t.nb_manuel }} à la main{% endif %}{% if t.nb_manuel and t.nb_dossier %}, {% endif %}{% if t.nb_dossier %}{{ t.nb_dossier }} par dossier{% endif %})</span>{% endif %}
+      </td>
+      <td class="note">
+        {% if t.taxonomie %}taxonomie.toml
+        {% elif t.cree_par %}créé par {{ t.cree_par }}{% if t.cree_le %} le {{ t.cree_le | date }}{% endif %}
+        {% else %}ancien tag de la taxonomie{% endif %}
+      </td>
+      <td class="actions-tag">
+        <a class="note petit" href="/admin/journal?tag={{ t.id }}">journal</a>
+        {% if not t.taxonomie %}
+        <details>
+          <summary>Modifier</summary>
+          <form method="post" action="/admin/tags">
+            <input type="hidden" name="action" value="renommer"><input type="hidden" name="tag_id" value="{{ t.id }}">
+            <input name="libelle" value="{{ t.libelle }}" required maxlength="60" size="16" aria-label="Libellé">
+            <input name="categorie" value="{{ t.categorie }}" list="liste-categories" required maxlength="60" size="10" aria-label="Catégorie">
+            <button type="submit" class="bouton secondaire">Renommer</button>
+          </form>
+          <form method="post" action="/admin/tags">
+            <input type="hidden" name="action" value="fusionner"><input type="hidden" name="tag_id" value="{{ t.id }}">
+            <select name="cible" required aria-label="Tag qui le remplace">
+              <option value="">Fusionner dans…</option>
+              {% for c in tags if c.id != t.id %}<option value="{{ c.id }}">{{ c.libelle }} ({{ c.categorie }})</option>{% endfor %}
+            </select>
+            <button type="submit" class="bouton secondaire">Fusionner</button>
+          </form>
+          {# tojson : un libellé avec apostrophe ou guillemet ne casse ni l'attribut ni le script #}
+          <form method="post" action="/admin/tags"
+                onsubmit='return confirm({{ ("Supprimer « " ~ t.libelle ~ " » et le retirer de " ~ total ~ " document(s) ?") | tojson }})'>
+            <input type="hidden" name="action" value="supprimer"><input type="hidden" name="tag_id" value="{{ t.id }}">
+            <button type="submit" class="bouton secondaire danger">Supprimer</button>
+          </form>
+        </details>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="note">Aucun tag pour l'instant : créez-en un, ou lancez l'indexation pour appliquer taxonomie.toml.</p>
+{% endfor %}
+{% endblock %}

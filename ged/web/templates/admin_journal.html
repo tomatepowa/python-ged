@@ -6,6 +6,9 @@
 <p class="note"><a href="/admin/tags">← Tags</a> · les {{ limite }} dernières actions{% if libelle_tag %} sur
   <strong>{{ libelle_tag }}</strong> (<a href="/admin/journal{{ '?par=' ~ (par | urlencode) if par }}">tous les tags</a>){% endif %}.</p>
 
+{% if message %}<p class="confirmation">{{ message }}</p>{% endif %}
+{% if erreur %}<p class="avertissement">{{ erreur }}</p>{% endif %}
+
 <form method="get" action="/admin/journal" class="filtre-journal">
   {% if tag %}<input type="hidden" name="tag" value="{{ tag }}">{% endif %}
   <label>Personne
@@ -19,7 +22,7 @@
 
 {% if lignes %}
 <table>
-  <thead><tr><th>Date</th><th>Personne</th><th>Action</th><th>Tag</th><th>Document</th><th>Détail</th></tr></thead>
+  <thead><tr><th>Date</th><th>Personne</th><th>Action</th><th>Tag</th><th>Document</th><th>Détail</th><th></th></tr></thead>
   <tbody>
   {% for l in lignes %}
     <tr>
@@ -29,6 +32,16 @@
       <td>{% if l.tag_id and l.tag %}<a href="/admin/journal?tag={{ l.tag_id }}">{{ l.tag }}</a>{% else %}{{ l.tag or "—" }}{% endif %}</td>
       <td class="chemin">{% if l.document_existe %}<a href="/document/{{ l.document_id }}">{{ l.document }}</a>{% else %}{{ l.document or "—" }}{% endif %}</td>
       <td class="note">{{ l.detail or "" }}</td>
+      <td>
+        {% if l.annule_le %}<span class="note petit">annulé par {{ l.annule_par }} le {{ l.annule_le.astimezone().strftime("%d/%m/%Y %H:%M") }}</span>
+        {% elif l.annulable %}
+        <form method="post" action="/journal/{{ l.id }}/annuler"
+              onsubmit='return confirm({{ ("Annuler ce " ~ l.action ~ " : remettre « " ~ (l.tag or "?") ~ " » comme avant ?") | tojson }})'>
+          <input type="hidden" name="retour" value="/admin/journal?{{ {'par': par, 'tag': tag or ''} | urlencode }}">
+          <button type="submit" class="bouton secondaire petit">Annuler</button>
+        </form>
+        {% endif %}
+      </td>
     </tr>
   {% endfor %}
   </tbody>

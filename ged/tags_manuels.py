@@ -12,7 +12,8 @@ Les administrateurs de la GED, en plus :
   « dossier »), sous-dossiers compris, y compris ceux qui y arriveront plus tard ;
 - créent, renomment, fusionnent et suppriment les tags (page Tags).
 
-Chaque action est notée dans journal_tag. Les mots-clés de la taxonomie sont attachés au tag
+Chaque action est notée dans journal_tag. Un retrait (sur un document ou un dossier) s'y
+annule : la pose ou la règle revient telle qu'elle était (voir annuler). Les mots-clés de la taxonomie sont attachés au tag
 (voir ged.taxonomie_base) : ils le suivent quand il est renommé, passent au tag cible d'une
 fusion et disparaissent avec lui.
 """
@@ -22,6 +23,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import psycopg
+from psycopg.types.json import Jsonb
 
 if TYPE_CHECKING:
     from ged.acces import Lecteur
@@ -61,14 +63,16 @@ def peut_retirer(lecteur: Lecteur, pose: dict) -> bool:
 
 
 def journaliser(conn: psycopg.Connection, par: str, action: str, tag_id: int | None = None,
-                document_id: int | None = None, detail: str | None = None) -> None:
-    """Note l'action, avec le libellé du tag et le chemin du document tels qu'ils sont à cet instant."""
-    conn.execute(
-        "INSERT INTO journal_tag (par, action, tag_id, tag, document_id, document, detail) VALUES ("
+                document_id: int | None = None, detail: str | None = None, etat_avant: dict | None = None) -> int:
+    """Note l'action, avec le libellé du tag et le chemin du document tels qu'ils sont à cet instant.
+    `etat_avant` : de quoi l'annuler (retraits). Renvoie l'identifiant de la ligne du journal."""
+    return conn.execute(
+        "INSERT INTO journal_tag (par, action, tag_id, tag, document_id, document, detail, etat_avant) VALUES ("
         "%(par)s, %(action)s, %(tag)s, (SELECT libelle || ' (' || categorie || ')' FROM tag WHERE id = %(tag)s), "
-        "%(doc)s, (SELECT chemin_relatif FROM document WHERE id = %(doc)s), %(detail)s)",
-        {"par": par, "action": action, "tag": tag_id, "doc": document_id, "detail": detail},
-    )
+        "%(doc)s, (SELECT chemin_relatif FROM document WHERE id = %(doc)s), %(detail)s, %(etat)s) RETURNING id",
+        {"par": par, "action": action, "tag": tag_id, "doc": document_id, "detail": detail,
+         "etat": Jsonb(etat_avant) if etat_avant is not None else None},
+    ).fetchone()["id"]
 
 
 # --- Liste des tags -------------------------------------------------------------------------
@@ -162,17 +166,20 @@ def ajouter(conn: psycopg.Connection, document_id: int, tag_id: int, lecteur: Le
     journaliser(conn, auteur(lecteur), "ajout", tag_id, document_id)
 
 
-def retirer(conn: psycopg.Connection, document_id: int, tag_id: int, lecteur: Lecteur, taxonomie: Taxonomie) -> None:
-    """Retire un tag du document (voir peut_retirer).
+def retirer(conn: psycopg.Connection, document_id: int, tag_id: int, lecteur: Lecteur,
+            taxonomie: Taxonomie) -> int | None:
+    """Retire un tag du document (voir peut_retirer). Renvoie la ligne du journal, qui permet
+    d'annuler le retrait (None si le document ne portait pas le tag).
 
     Un administrateur le retire pour de bon. Un utilisateur annule seulement sa pose : si la
     taxonomie ou un dossier donnent aussi ce tag au document, il le garde à ce titre.
     """
     pose = conn.execute(
-        "SELECT origine, pose_par_sid FROM document_tag WHERE document_id = %s AND tag_id = %s", (document_id, tag_id)
+        "SELECT origine, pose_par, pose_par_sid, pose_le FROM document_tag WHERE document_id = %s AND tag_id = %s",
+        (document_id, tag_id),
     ).fetchone()
     if not pose:
-        return
+        return None
     if not peut_retirer(lecteur, pose):
         raise RetraitRefuse("Vous ne pouvez retirer que les tags que vous avez posés.")
     conn.execute("DELETE FROM document_tag WHERE document_id = %s AND tag_id = %s", (document_id, tag_id))
@@ -184,8 +191,9 @@ def retirer(conn: psycopg.Connection, document_id: int, tag_id: int, lecteur: Le
         )
     else:
         reappliquer(conn, document_id, proposes_par_la_taxonomie(conn, taxonomie, document_id))
-    journaliser(conn, auteur(lecteur), "retrait", tag_id, document_id,
-                f"origine : {pose['origine']}" + ("" if lecteur.admin else " (annulation de sa pose)"))
+    etat = {**pose, "pose_le": pose["pose_le"].isoformat() if pose["pose_le"] else None, "admin": lecteur.admin}
+    return journaliser(conn, auteur(lecteur), "retrait", tag_id, document_id,
+                       f"origine : {pose['origine']}" + ("" if lecteur.admin else " (annulation de sa pose)"), etat)
 
 
 # --- Sur un dossier (administrateurs) -------------------------------------------------------
@@ -215,23 +223,30 @@ def ajouter_au_dossier(conn: psycopg.Connection, source_id: int, chemin: str, ta
         "ON CONFLICT (source_id, chemin, tag_id) DO UPDATE SET pose_par = EXCLUDED.pose_par RETURNING id",
         (source_id, chemin, tag_id, auteur(lecteur)),
     ).fetchone()["id"]
-    nb = conn.execute(
+    nb = _appliquer_regle(conn, regle)
+    journaliser(conn, auteur(lecteur), "ajout au dossier", tag_id, detail=f"{chemin or 'racine'} : {nb} documents")
+    return nb
+
+
+def _appliquer_regle(conn: psycopg.Connection, regle_id: int) -> int:
+    """Pose le tag d'une règle de dossier sur ses documents. Renvoie leur nombre."""
+    return conn.execute(
         "INSERT INTO document_tag (document_id, tag_id, origine, pose_par, pose_le) "
         "SELECT d.id, r.tag_id, 'dossier', r.pose_par, r.pose_le "
         f"FROM tag_dossier r JOIN document d ON {dans_le_dossier()} "
         "WHERE r.id = %s AND d.supprime_le IS NULL "
         "AND NOT EXISTS (SELECT 1 FROM tag_retire x WHERE x.document_id = d.id AND x.tag_id = r.tag_id) "
         "ON CONFLICT (document_id, tag_id) DO NOTHING",
-        (regle,),
+        (regle_id,),
     ).rowcount
-    journaliser(conn, auteur(lecteur), "ajout au dossier", tag_id, detail=f"{chemin or 'racine'} : {nb} documents")
-    return nb
 
 
 def retirer_du_dossier(conn: psycopg.Connection, regle_id: int, lecteur: Lecteur) -> int:
     """Retire le tag du dossier et de ses documents, sauf ceux qui le tiennent d'ailleurs (posé à
     la main, taxonomie, autre dossier parent). Renvoie le nombre de documents qui le perdent."""
-    regle = conn.execute("DELETE FROM tag_dossier WHERE id = %s RETURNING source_id, chemin, tag_id", (regle_id,)).fetchone()
+    regle = conn.execute(
+        "DELETE FROM tag_dossier WHERE id = %s RETURNING source_id, chemin, tag_id, pose_par, pose_le", (regle_id,)
+    ).fetchone()
     if not regle:
         return 0
     nb = conn.execute(
@@ -241,9 +256,66 @@ def retirer_du_dossier(conn: psycopg.Connection, regle_id: int, lecteur: Lecteur
         f" AND {dans_le_dossier('r2', 'd2')} WHERE r2.tag_id = %(tag)s)",
         {"source": regle["source_id"], "chemin": regle["chemin"], "tag": regle["tag_id"]},
     ).rowcount
+    etat = {"source_id": regle["source_id"], "chemin": regle["chemin"], "pose_par": regle["pose_par"],
+            "pose_le": regle["pose_le"].isoformat(), "admin": True}
     journaliser(conn, auteur(lecteur), "retrait du dossier", regle["tag_id"],
-                detail=f"{regle['chemin'] or 'racine'} : {nb} documents")
+                detail=f"{regle['chemin'] or 'racine'} : {nb} documents", etat_avant=etat)
     return nb
+
+
+# --- Annulation d'un retrait ----------------------------------------------------------------
+
+
+def annulable(ligne: dict, lecteur: Lecteur) -> bool:
+    """Le retrait noté sur cette ligne du journal peut-il être annulé par cette personne ?
+    Un administrateur annule tous les retraits ; un utilisateur, ceux de ses propres poses."""
+    if ligne["etat_avant"] is None or ligne["annule_le"] is not None:
+        return False
+    return lecteur.admin or (not ligne["etat_avant"].get("admin") and ligne["par"] == auteur(lecteur))
+
+
+def annuler(conn: psycopg.Connection, journal_id: int, lecteur: Lecteur) -> str:
+    """Annule un retrait : la pose (avec son origine, son auteur et sa date) ou la règle de
+    dossier revient telle qu'elle était. Renvoie le message à afficher."""
+    ligne = conn.execute("SELECT * FROM journal_tag WHERE id = %s FOR UPDATE", (journal_id,)).fetchone()
+    if not ligne or ligne["etat_avant"] is None:
+        raise TagInvalide("Cette action ne s'annule pas.")
+    if ligne["annule_le"] is not None:
+        raise TagInvalide(f"Déjà annulé par {ligne['annule_par']}.")
+    if not annulable(ligne, lecteur):
+        raise RetraitRefuse("Vous ne pouvez annuler que le retrait de vos propres poses.")
+    tag = conn.execute("SELECT libelle FROM tag WHERE id = %s", (ligne["tag_id"],)).fetchone()
+    if not tag:
+        raise TagInvalide("Le tag n'existe plus : impossible de le remettre.")
+    etat = ligne["etat_avant"]
+    if ligne["action"] == "retrait":
+        if not conn.execute("SELECT 1 FROM document WHERE id = %s", (ligne["document_id"],)).fetchone():
+            raise TagInvalide("Le document n'est plus dans l'index.")
+        conn.execute("DELETE FROM tag_retire WHERE document_id = %s AND tag_id = %s", (ligne["document_id"], ligne["tag_id"]))
+        # Reposé entre-temps (à la main, par un dossier) : la pose actuelle reste
+        conn.execute(
+            "INSERT INTO document_tag (document_id, tag_id, origine, pose_par, pose_par_sid, pose_le) "
+            "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (document_id, tag_id) DO NOTHING",
+            (ligne["document_id"], ligne["tag_id"], etat["origine"], etat.get("pose_par"), etat.get("pose_par_sid"),
+             etat.get("pose_le")),
+        )
+        message = f"« {tag['libelle']} » est remis sur le document."
+    elif ligne["action"] == "retrait du dossier":
+        if not conn.execute("SELECT 1 FROM source WHERE id = %s", (etat["source_id"],)).fetchone():
+            raise TagInvalide("La source du dossier n'est plus dans l'index.")
+        regle = conn.execute(
+            "INSERT INTO tag_dossier (source_id, chemin, tag_id, pose_par, pose_le) VALUES (%s, %s, %s, %s, %s) "
+            "ON CONFLICT (source_id, chemin, tag_id) DO UPDATE SET pose_par = tag_dossier.pose_par RETURNING id",
+            (etat["source_id"], etat["chemin"], ligne["tag_id"], etat.get("pose_par"), etat["pose_le"]),
+        ).fetchone()["id"]
+        nb = _appliquer_regle(conn, regle)
+        message = f"« {tag['libelle']} » est remis sur le dossier ({nb} documents)."
+    else:
+        raise TagInvalide("Cette action ne s'annule pas.")
+    conn.execute("UPDATE journal_tag SET annule_par = %s, annule_le = now() WHERE id = %s", (auteur(lecteur), journal_id))
+    journaliser(conn, auteur(lecteur), "annulation", ligne["tag_id"], ligne["document_id"],
+                f"du {ligne['action']} du {ligne['le'].astimezone().strftime('%d/%m/%Y %H:%M')} par {ligne['par']}")
+    return message
 
 
 # --- Gestion des tags (administrateurs) -----------------------------------------------------
@@ -347,6 +419,10 @@ def journal(conn: psycopg.Connection, par: str = "", tag_id: int | None = None) 
         "ORDER BY j.le DESC, j.id DESC LIMIT %(limite)s",
         {"par": par, "tag": tag_id, "limite": JOURNAL_MAX},
     ).fetchall()
+
+
+def ligne_du_journal(conn: psycopg.Connection, journal_id: int) -> dict | None:
+    return conn.execute("SELECT * FROM journal_tag WHERE id = %s", (journal_id,)).fetchone()
 
 
 def personnes_du_journal(conn: psycopg.Connection) -> list[str]:

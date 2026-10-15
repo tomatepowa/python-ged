@@ -179,6 +179,12 @@ CREATE TABLE IF NOT EXISTS journal_tag (
 );
 CREATE INDEX IF NOT EXISTS journal_tag_le_idx ON journal_tag (le DESC);
 
+-- Annulation d'un retrait (voir tags_manuels.annuler) : de quoi remettre la pose ou la règle de
+-- dossier telle qu'elle était, et qui l'a annulé
+ALTER TABLE journal_tag ADD COLUMN IF NOT EXISTS etat_avant jsonb;
+ALTER TABLE journal_tag ADD COLUMN IF NOT EXISTS annule_par text;
+ALTER TABLE journal_tag ADD COLUMN IF NOT EXISTS annule_le timestamptz;
+
 -- Taxonomie en base (voir ged/taxonomie_base.py) : mots-clés du tag tels qu'écrits, préfixe
 -- « titre: » compris. NULL ou vide : le tag n'est jamais posé automatiquement.
 ALTER TABLE tag ADD COLUMN IF NOT EXISTS mots_cles text[];

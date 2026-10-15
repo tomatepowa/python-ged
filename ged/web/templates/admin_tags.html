@@ -84,7 +84,8 @@ avec un aperçu avant d'enregistrer, les tags se recalculent ensuite en arrière
             <input name="categorie" value="{{ t.categorie }}" list="liste-categories" required maxlength="60" size="10" aria-label="Catégorie">
             <button type="submit" class="bouton secondaire">Renommer</button>
           </form>
-          <form method="post" action="/admin/tags">
+          <form method="post" action="/admin/tags"
+                onsubmit='const choix = this.cible.selectedOptions[0]; return confirm({{ ("Fusionner « " ~ t.libelle ~ " » dans « ") | tojson }} + choix.text + {{ (" » ? Ses documents, dossiers et mots-clés y passent, et « " ~ t.libelle ~ " » disparaît, sans annulation possible.") | tojson }})'>
             <input type="hidden" name="action" value="fusionner"><input type="hidden" name="tag_id" value="{{ t.id }}">
             <select name="cible" required aria-label="Tag qui le remplace" title="Ses documents, dossiers et mots-clés passent au tag choisi">
               <option value="">Fusionner dans…</option>
@@ -94,7 +95,7 @@ avec un aperçu avant d'enregistrer, les tags se recalculent ensuite en arrière
           </form>
           {# tojson : un libellé avec apostrophe ou guillemet ne casse ni l'attribut ni le script #}
           <form method="post" action="/admin/tags"
-                onsubmit='return confirm({{ ("Supprimer « " ~ t.libelle ~ " », ses mots-clés, et le retirer de " ~ total ~ " document(s) ?") | tojson }})'>
+                onsubmit='return confirm({{ ("Supprimer « " ~ t.libelle ~ " », ses mots-clés, et le retirer de " ~ total ~ " document(s) ? Pas d'annulation possible.") | tojson }})'>
             <input type="hidden" name="action" value="supprimer"><input type="hidden" name="tag_id" value="{{ t.id }}">
             <button type="submit" class="bouton secondaire danger">Supprimer</button>
           </form>

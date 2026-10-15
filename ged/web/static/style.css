@@ -625,3 +625,6 @@ td.mots-cles code.titre { font-style: italic; }
 .exemples-apercu { margin: .2rem 0 .5rem; padding-left: 1.1rem; font-size: .82rem; }
 .gain { color: #1e8449; font-weight: 600; }
 .perte { color: #c0392b; font-weight: 600; }
+/* Annulation d'un retrait de tag (fiche du document, journal) */
+.confirmation.annulation { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin-top: .5rem; }
+.bouton.petit { padding: .15rem .55rem; font-size: .8rem; }

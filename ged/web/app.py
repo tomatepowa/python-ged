@@ -352,17 +352,21 @@ def creer_app(
             return chercher_personnes(conn, q[:100], acces(request, conn))
 
     @app.get("/document/{document_id}", response_class=HTMLResponse)
-    def detail(request: Request, document_id: int):
+    def detail(request: Request, document_id: int, retrait: int | None = None):
+        lecteur: Lecteur = request.state.lecteur
         with pool.connection() as conn:
             # Document hors des droits de la personne : même réponse que s'il n'existait pas
             contenu = documents.fiche(conn, document_id, acces(request, conn))
             if contenu:
                 contenu["choix_tags"] = tags_manuels.tous_les_tags(conn)
+                # Juste après un retrait : de quoi l'annuler
+                ligne = tags_manuels.ligne_du_journal(conn, retrait) if retrait else None
+                if ligne and ligne["document_id"] == document_id and tags_manuels.annulable(ligne, lecteur):
+                    contenu["retrait_annulable"] = ligne
         if not contenu:
             raise HTTPException(404, "Document inconnu")
         doc = contenu["doc"]
         dossier = dossier_parent(doc["chemin_relatif"])
-        lecteur: Lecteur = request.state.lecteur
         for tag in contenu["tags"]:
             tag["retirable"] = tags_manuels.peut_retirer(lecteur, tag)
         # Ce qui donne à la personne le droit de voir ce document (vide pour un administrateur
@@ -439,22 +443,49 @@ def creer_app(
         champs = await formulaire(request)
         lecteur: Lecteur = request.state.lecteur
 
-        def appliquer() -> str | None:
+        def appliquer() -> tuple[str | None, int | None]:
+            """(erreur, ligne du journal du retrait, pour pouvoir l'annuler)"""
             with pool.connection() as conn:
                 # Seulement sur un document que la personne a le droit de voir
                 if not documents.visible(conn, document_id, acces(request, conn)):
                     raise HTTPException(404, "Document inconnu")
                 try:
                     if (tag := entier(champs, "retirer")) is not None:
-                        tags_manuels.retirer(conn, document_id, tag, lecteur, taxonomie_base.charger(conn))
-                    elif (tag := entier(champs, "tag_id")) is not None:
+                        return None, tags_manuels.retirer(conn, document_id, tag, lecteur, taxonomie_base.charger(conn))
+                    if (tag := entier(champs, "tag_id")) is not None:
                         tags_manuels.ajouter(conn, document_id, tag, lecteur)
                 except (tags_manuels.TagInvalide, tags_manuels.RetraitRefuse) as exc:
-                    return str(exc)
-            return None
+                    return str(exc), None
+            return None, None
 
-        erreur = await run_in_threadpool(appliquer)
-        return RedirectResponse(avec_message(f"/document/{document_id}#tags", "erreur_tag", erreur), status_code=303)
+        erreur, retrait = await run_in_threadpool(appliquer)
+        chemin = f"/document/{document_id}" + (f"?retrait={retrait}" if retrait else "") + "#tags"
+        return RedirectResponse(avec_message(chemin, "erreur_tag", erreur), status_code=303)
+
+    @app.post("/journal/{journal_id}/annuler")
+    async def annuler_retrait(request: Request, journal_id: int):
+        """Annule un retrait de tag (document ou dossier) : retour à la page d'où vient la demande."""
+        champs = await formulaire(request)
+        lecteur: Lecteur = request.state.lecteur
+        retour = champs.get("retour", "/")
+        # Seulement une page de la GED (pas de redirection vers un autre site)
+        if not retour.startswith("/") or retour.startswith("//") or "\\" in retour:
+            retour = "/"
+        cle_message, cle_erreur = ("message_tag", "erreur_tag") if retour.startswith("/document/") else ("message", "erreur")
+
+        def appliquer() -> str:
+            with pool.connection() as conn:
+                ligne = tags_manuels.ligne_du_journal(conn, journal_id)
+                # Un retrait sur un document que la personne ne voit plus ne s'annule pas depuis chez elle
+                if ligne and ligne["document_id"] and not documents.visible(conn, ligne["document_id"], acces(request, conn)):
+                    raise HTTPException(404, "Document inconnu")
+                return tags_manuels.annuler(conn, journal_id, lecteur)
+
+        try:
+            message = await run_in_threadpool(appliquer)
+        except (tags_manuels.TagInvalide, tags_manuels.RetraitRefuse) as exc:
+            return RedirectResponse(avec_message(retour, cle_erreur, str(exc)), status_code=303)
+        return RedirectResponse(avec_message(retour, cle_message, message), status_code=303)
 
     @app.post("/dossier/tags")
     async def tags_dossier(request: Request):
@@ -592,10 +623,12 @@ def creer_app(
                         headers={"Content-Disposition": 'attachment; filename="taxonomie.toml"'})
 
     @app.get("/admin/journal", response_class=HTMLResponse)
-    def admin_journal(request: Request, par: str = "", tag: int | None = None):
+    def admin_journal(request: Request, par: str = "", tag: int | None = None, message: str = "", erreur: str = ""):
         exiger_admin(request)
         with pool.connection() as conn:
             lignes = tags_manuels.journal(conn, par, tag)
+            for ligne in lignes:
+                ligne["annulable"] = tags_manuels.annulable(ligne, request.state.lecteur)
             personnes = tags_manuels.personnes_du_journal(conn)
             libelle_tag = conn.execute(
                 "SELECT libelle || ' (' || categorie || ')' AS nom FROM tag WHERE id = %s", (tag,)
@@ -603,6 +636,7 @@ def creer_app(
         return templates.TemplateResponse(request, "admin_journal.html", {
             "lignes": lignes, "personnes": personnes, "par": par, "tag": tag,
             "libelle_tag": libelle_tag["nom"] if libelle_tag else None, "limite": tags_manuels.JOURNAL_MAX,
+            "message": message, "erreur": erreur,
         })
 
     @app.get("/stats", response_class=HTMLResponse)

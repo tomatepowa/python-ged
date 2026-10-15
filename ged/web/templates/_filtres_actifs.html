@@ -54,7 +54,7 @@
   {% for r in regles_dossier %}
   <span class="tag-pose"><span class="badge tag pose" title="{{ r.categorie }} – posé sur « {{ r.chemin or 'racine' }} »{{ ' par ' ~ r.pose_par if r.pose_par }} – porté par {{ r.nb }} document{{ 's' if r.nb > 1 }}">{{ r.libelle }}</span>
     {%- if r.herite %}<span class="note petit"> (dossier parent)</span>
-    {%- else %}<button type="submit" form="form-tags-dossier" formnovalidate name="retirer" value="{{ r.id }}" class="retrait-tag" title="Retirer « {{ r.libelle }} » de ce dossier et de ses {{ r.nb }} documents (sauf ceux qui le tiennent d'ailleurs)">×</button>{% endif %}</span>
+    {%- else %}<button type="submit" form="form-tags-dossier" formnovalidate name="retirer" value="{{ r.id }}" class="retrait-tag" onclick='return confirm({{ ("Retirer « " ~ r.libelle ~ " » de ce dossier et de ses " ~ r.nb ~ " document(s) ? (annulable depuis le journal des tags)") | tojson }})' title="Retirer « {{ r.libelle }} » de ce dossier et de ses {{ r.nb }} documents (sauf ceux qui le tiennent d'ailleurs)">×</button>{% endif %}</span>
   {% else %}<span class="note">aucun</span>{% endfor %}
 </div>
 {% endif %}

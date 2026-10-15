@@ -41,7 +41,7 @@ def client_sans_identification():
     return TestClient(creer_app(cfg), base_url="http://vm-ged:8000")
 
 
-@pytest.mark.parametrize("url", ["/document/1/tags", "/dossier/tags", "/admin/tags"])
+@pytest.mark.parametrize("url", ["/document/1/tags", "/dossier/tags", "/admin/tags", "/journal/1/annuler"])
 def test_formulaire_venu_d_un_autre_site_refuse(client_sans_identification, url):
     for entetes in ({"Origin": "http://site-malveillant.example"}, {"Referer": "http://autre:8000/"}, {}):
         reponse = client_sans_identification.post(url, content="tag_id=1", headers={**FORMULAIRE, **entetes})
@@ -228,3 +228,65 @@ def test_fusion_et_suppression(conn, tmp_path):
     assert tags_de(conn, a) == tags_de(conn, b) == {}
     # Le journal garde le nom du tag disparu
     assert tags_manuels.journal(conn)[0]["tag"] == "Veeam (logiciel)"
+
+
+def test_annuler_le_retrait_d_un_administrateur(conn, tmp_path):
+    from ged import tags_manuels
+
+    doc = creer_documents(conn, "veeam.txt")["veeam.txt"]
+    idx = indexeur(conn, tmp_path)
+    idx._appliquer_tags(doc, "veeam.txt", "")
+    veeam = tags_manuels.id_tag(conn, "logiciel", "Veeam")
+    retrait = tags_manuels.retirer(conn, doc, veeam, ADMIN, idx.taxonomie)
+    assert tags_de(conn, doc) == {}
+    ligne = tags_manuels.ligne_du_journal(conn, retrait)
+    assert tags_manuels.annulable(ligne, ADMIN) and not tags_manuels.annulable(ligne, ALICE)
+    with pytest.raises(tags_manuels.RetraitRefuse):
+        tags_manuels.annuler(conn, retrait, ALICE)
+    assert "remis" in tags_manuels.annuler(conn, retrait, ADMIN)
+    # De retour comme avant : posé par la taxonomie, plus noté comme retiré
+    assert tags_de(conn, doc) == {"Veeam": "auto"}
+    assert not conn.execute("SELECT 1 FROM tag_retire").fetchone()
+    idx._appliquer_tags(doc, "veeam.txt", "")
+    assert tags_de(conn, doc) == {"Veeam": "auto"}
+    with pytest.raises(tags_manuels.TagInvalide, match="Déjà annulé"):
+        tags_manuels.annuler(conn, retrait, ADMIN)
+    assert [j["action"] for j in tags_manuels.journal(conn)][:2] == ["annulation", "retrait"]
+    # Tag supprimé entre-temps : rien à remettre
+    retrait = tags_manuels.retirer(conn, doc, veeam, ADMIN, idx.taxonomie)
+    tags_manuels.supprimer(conn, veeam, ADMIN)
+    with pytest.raises(tags_manuels.TagInvalide, match="n'existe plus"):
+        tags_manuels.annuler(conn, retrait, ADMIN)
+
+
+def test_annuler_le_retrait_de_sa_pose(conn, tmp_path):
+    from ged import tags_manuels
+
+    doc = creer_documents(conn, "note.txt")["note.txt"]
+    idx = indexeur(conn, tmp_path)
+    dpi = tags_manuels.creer(conn, "logiciel", "DPI", ADMIN)
+    tags_manuels.ajouter(conn, doc, dpi, ALICE)
+    pose_le = conn.execute("SELECT pose_le FROM document_tag").fetchone()["pose_le"]
+    retrait = tags_manuels.retirer(conn, doc, dpi, ALICE, idx.taxonomie)
+    with pytest.raises(tags_manuels.RetraitRefuse):
+        tags_manuels.annuler(conn, retrait, BOB)
+    tags_manuels.annuler(conn, retrait, ALICE)
+    # Remis à son nom, avec sa date : elle peut toujours le retirer
+    assert conn.execute("SELECT origine, pose_par, pose_par_sid, pose_le FROM document_tag").fetchone() == {
+        "origine": "manuel", "pose_par": ALICE.compte, "pose_par_sid": ALICE.sid, "pose_le": pose_le,
+    }
+
+
+def test_annuler_le_retrait_d_un_dossier(conn):
+    from ged import tags_manuels
+
+    docs = creer_documents(conn, r"applis\a.txt", r"applis\b.txt")
+    source = conn.execute("SELECT id FROM source").fetchone()["id"]
+    dpi = tags_manuels.creer(conn, "logiciel", "DPI", ADMIN)
+    tags_manuels.ajouter_au_dossier(conn, source, "applis", dpi, ADMIN)
+    regle = tags_manuels.regles_du_dossier(conn, source, "applis")[0]
+    assert tags_manuels.retirer_du_dossier(conn, regle["id"], ADMIN) == 2
+    retrait = tags_manuels.journal(conn)[0]["id"]
+    assert "2 documents" in tags_manuels.annuler(conn, retrait, ADMIN)
+    assert [r["chemin"] for r in tags_manuels.regles_du_dossier(conn, source, "applis")] == ["applis"]
+    assert all(tags_de(conn, d) == {"DPI": "dossier"} for d in docs.values())

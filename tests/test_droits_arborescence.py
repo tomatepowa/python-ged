@@ -1,4 +1,5 @@
 import sys
+
 import pytest
 
 from ged.arborescence import dossier_parent, fil_ariane

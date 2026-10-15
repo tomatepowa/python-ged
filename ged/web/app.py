@@ -17,6 +17,7 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from ged import config as configuration
+from ged import documents
 from ged.acces import FiltreAcces, Lecteur, diagnostic_acces, filtre_acces, sids_accordant
 from ged.annuaire import AnnuaireAD, nom_complet_local, organiser_groupes, prefixe_machine
 from ged.arborescence import construire_arbre_resultats, dossier_parent, fil_ariane
@@ -122,8 +123,7 @@ def libelle_du_dossier(conn, filtres: Filtres) -> str | None:
     cible = filtres.dossier_cible()
     if not cible:
         return None
-    source = conn.execute("SELECT nom FROM source WHERE id = %s", (cible[0],)).fetchone()
-    return " › ".join(filter(None, [source["nom"] if source else "?", *cible[1].split("\\")]))
+    return " › ".join(filter(None, [documents.nom_source(conn, cible[0]) or "?", *cible[1].split("\\")]))
 
 
 def refus_authentification(request: Request, entete: str | None) -> HTMLResponse:
@@ -237,10 +237,7 @@ def creer_app(
 
     def contexte_resultats(filtres: Filtres, conn, acces: FiltreAcces) -> dict:
         contexte = {
-            "tags_actifs": conn.execute(
-                "SELECT id, categorie, libelle FROM tag WHERE id = ANY(%s) ORDER BY categorie, libelle",
-                (filtres.tags,),
-            ).fetchall() if filtres.tags else [],
+            "tags_actifs": documents.tags_choisis(conn, filtres.tags),
             "libelle_dossier": libelle_du_dossier(conn, filtres),
         }
         return {**contexte, **contexte_vue(filtres, conn, acces)}
@@ -315,26 +312,11 @@ def creer_app(
     @app.get("/document/{document_id}", response_class=HTMLResponse)
     def detail(request: Request, document_id: int):
         with pool.connection() as conn:
-            filtre = acces(request, conn)
             # Document hors des droits de la personne : même réponse que s'il n'existait pas
-            doc = conn.execute(
-                "SELECT d.*, s.nom AS source, s.pole FROM document d JOIN source s ON s.id = d.source_id "
-                f"WHERE d.id = %(id)s AND {filtre.sql}",
-                {"id": document_id, **filtre.parametres},
-            ).fetchone()
-            if not doc:
-                raise HTTPException(404, "Document inconnu")
-            tags = conn.execute(
-                "SELECT t.id, t.categorie, t.libelle, dt.origine FROM document_tag dt JOIN tag t ON t.id = dt.tag_id "
-                "WHERE dt.document_id = %s ORDER BY t.categorie, t.libelle",
-                (document_id,),
-            ).fetchall()
-            doublons = conn.execute(
-                "SELECT d.id, d.chemin_relatif FROM document d "
-                f"WHERE d.empreinte = %(empreinte)s AND d.id <> %(id)s AND d.supprime_le IS NULL AND {filtre.sql} "
-                "ORDER BY d.chemin_relatif",
-                {"empreinte": doc["empreinte"], "id": document_id, **filtre.parametres},
-            ).fetchall() if doc["empreinte"] else []
+            contenu = documents.fiche(conn, document_id, acces(request, conn))
+        if not contenu:
+            raise HTTPException(404, "Document inconnu")
+        doc = contenu["doc"]
         dossier = dossier_parent(doc["chemin_relatif"])
         lecteur: Lecteur = request.state.lecteur
         # Ce qui donne à la personne le droit de voir ce document (vide pour un administrateur
@@ -348,7 +330,7 @@ def creer_app(
             request,
             "document.html",
             {
-                "doc": doc, "tags": tags, "doublons": doublons, "dossier": dossier, "ariane": fil_ariane(dossier),
+                **contenu, "dossier": dossier, "ariane": fil_ariane(dossier),
                 "accordant": accordant, "mes_comptes": mes_comptes,
             },
         )
@@ -393,12 +375,7 @@ def creer_app(
         """Sert le fichier d'origine. Seuls les chemins présents dans l'index, et que la personne
         a le droit de lire, sont accessibles (le serveur lit le fichier avec son propre compte)."""
         with pool.connection() as conn:
-            filtre = acces(request, conn)
-            doc = conn.execute(
-                "SELECT d.chemin, d.nom, d.extension FROM document d "
-                f"WHERE d.id = %(id)s AND d.supprime_le IS NULL AND {filtre.sql}",
-                {"id": document_id, **filtre.parametres},
-            ).fetchone()
+            doc = documents.fichier(conn, document_id, acces(request, conn))
         if not doc:
             raise HTTPException(404, "Document inconnu")
         chemin = Path(doc["chemin"])

@@ -42,7 +42,7 @@ class Taxonomie:
     densite_min: float = 0.5
 
     @classmethod
-    def charger(cls, chemin: Path) -> "Taxonomie":
+    def charger(cls, chemin: Path) -> Taxonomie:
         if not chemin.is_file():
             return cls(regles={})
         with chemin.open("rb") as f:

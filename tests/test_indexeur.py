@@ -2,8 +2,8 @@ import os
 from pathlib import Path
 
 from ged.config import charger
-from ged.indexeur import a_quitte, parcourir
 from ged.extraits import construire_motif, extraire
+from ged.indexeur import a_quitte, parcourir
 from ged.recherche import Filtres, requete_saisie, sous_titre
 
 

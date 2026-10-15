@@ -29,7 +29,7 @@ class Lecteur:
     sid: str = ""
 
     @classmethod
-    def sans_filtre(cls) -> "Lecteur":
+    def sans_filtre(cls) -> Lecteur:
         """Authentification désactivée : tout est visible."""
         return cls(compte="", sids=frozenset(), sids_refus=frozenset(), admin=True)
 

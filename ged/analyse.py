@@ -12,6 +12,7 @@ from __future__ import annotations
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from itertools import pairwise
 
 import psycopg
 
@@ -99,7 +100,7 @@ def rapport(documents: list[Document], taxonomie: Taxonomie, comptes_tags: dict[
     ]
     lignes = sorted(
         ([tag.categorie, tag.libelle, comptes_tags.get((tag.categorie, tag.libelle), 0)] for tag in taxonomie.regles),
-        key=lambda l: (l[0], -l[2]),
+        key=lambda ligne: (ligne[0], -ligne[2]),
     )
     sortie += _tableau(["Catégorie", "Tag", "Documents"], lignes) + [""]
 
@@ -128,13 +129,13 @@ def rapport(documents: list[Document], taxonomie: Taxonomie, comptes_tags: dict[
                   if niv == niveau and n >= min_docs]
         if not lignes:
             continue
-        lignes.sort(key=lambda l: -l[1])
+        lignes.sort(key=lambda ligne: -ligne[1])
         sortie += [f"### Niveau {niveau}", ""]
         sortie += _tableau(["Dossier", "Documents", "Déjà tagués"], lignes[:LIGNES_MAX]) + [""]
 
     lignes = [[nom, len(lieux), docs_par_nom_dossier[nom], couvert(taxonomie, nom) or ""]
               for nom, lieux in recurrents.items() if len(lieux) >= 2 and docs_par_nom_dossier[nom] >= min_docs]
-    lignes.sort(key=lambda l: (-l[1], -l[2]))
+    lignes.sort(key=lambda ligne: (-ligne[1], -ligne[2]))
     if lignes:
         sortie += ["## Noms de dossiers récurrents", "",
                    "Le même nom de dossier à plusieurs endroits de l'arborescence : souvent un thème transversal.",
@@ -147,7 +148,7 @@ def rapport(documents: list[Document], taxonomie: Taxonomie, comptes_tags: dict[
     for d in documents:
         liste = mots(f"{d.nom.rsplit('.', 1)[0]} {d.titre or ''}")
         frequence_mots.update(set(liste))
-        frequence_paires.update({f"{a} {b}" for a, b in zip(liste, liste[1:]) if a != b})
+        frequence_paires.update({f"{a} {b}" for a, b in pairwise(liste) if a != b})
 
     termes = [(t, n) for t, n in frequence_mots.most_common() if n >= min_docs]
     paires = [(t, n) for t, n in frequence_paires.most_common() if n >= min_docs]
@@ -162,7 +163,7 @@ def rapport(documents: list[Document], taxonomie: Taxonomie, comptes_tags: dict[
     # Dossiers les moins bien couverts : là où la taxonomie manque le plus
     lignes = [[f"niveau {niv} : {nom}", n, _pourcent(t, n)] for (niv, nom), (n, t) in par_dossier.items()
               if n >= max(min_docs, 5) and t / n < 0.5]
-    lignes.sort(key=lambda l: -l[1])
+    lignes.sort(key=lambda ligne: -ligne[1])
     if lignes:
         sortie += ["## Dossiers peu couverts", "", "Moins de la moitié des documents y ont un tag.", ""]
         sortie += _tableau(["Dossier", "Documents", "Déjà tagués"], lignes[:LIGNES_MAX // 2]) + [""]

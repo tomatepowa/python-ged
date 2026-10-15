@@ -19,11 +19,11 @@ class Dossier:
     chemin: str
     # Documents dans ce dossier ET ses sous-dossiers
     nb_documents: int = 0
-    enfants: dict[str, "Dossier"] = field(default_factory=dict)
+    enfants: dict[str, Dossier] = field(default_factory=dict)
     # Documents situés directement dans ce dossier (vue arborescence des résultats)
     fichiers: list[dict] = field(default_factory=list)
 
-    def sous_dossiers(self) -> list["Dossier"]:
+    def sous_dossiers(self) -> list[Dossier]:
         return sorted(self.enfants.values(), key=lambda d: d.nom.lower())
 
 
@@ -42,7 +42,7 @@ class Branche:
     chemin: str
     nb_documents: int
     fichiers: list[dict]
-    enfants: list["Branche"]
+    enfants: list[Branche]
     # Dossiers de la chaîne fusionnée, sauf le dernier : (nom, chemin), chacun cliquable
     ancetres: list[tuple[str, str]] = field(default_factory=list)
 

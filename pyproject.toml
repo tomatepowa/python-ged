@@ -32,3 +32,22 @@ packages = ["ged"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+# Erreurs, syntaxe Python récente, bugs probables, simplifications (pas le tri des imports :
+# il mettrait un nom par ligne dans les imports groupés)
+select = ["E", "F", "W", "UP", "B", "SIM"]
+ignore = [
+    "E501",  # quelques lignes longues (requêtes SQL, messages) restent plus lisibles d'un bloc
+    "SIM905",  # listes de mots écrites en texte puis découpées (.split()) : plus lisibles
+    "B008",  # Depends()/Query() en valeur par défaut : usage normal de FastAPI
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Query() = [] : FastAPI copie la valeur par défaut, la liste n'est pas partagée
+"ged/web/app.py" = ["B006"]
+# Les captures sont prises dans la boucle même : capturer() n'est jamais appelée après coup
+"outils/demo/captures.py" = ["B023"]

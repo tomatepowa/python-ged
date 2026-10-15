@@ -60,7 +60,7 @@ class AnnuaireAD:
         if sys.platform != "win32":
             return False
         try:
-            self._contexte_de_nommage
+            self._contexte_de_nommage  # noqa: B018 (la lecture interroge l'annuaire)
             return True
         except Exception as exc:  # com_error : domaine introuvable
             log.info("Pas d'annuaire Active Directory joignable : %s", exc)
@@ -206,7 +206,7 @@ class Groupe:
     """Un groupe dans l'arbre : les groupes dont il est membre sont ses `enfants` (affichés dessous)."""
     sid: str
     nom: str
-    enfants: list["Groupe"] = field(default_factory=list)
+    enfants: list[Groupe] = field(default_factory=list)
     # Autres groupes (ou « directement ») par lesquels la personne en est aussi membre
     aussi_via: list[str] = field(default_factory=list)
 

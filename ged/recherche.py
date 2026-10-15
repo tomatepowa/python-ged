@@ -151,13 +151,13 @@ def corriger(conn: psycopg.Connection, mots: list[str], acces: FiltreAcces) -> l
         ).fetchall()
         candidats.append([(p["mot"], p["distance"]) for p in proches] or [(mot, 0)])
 
-    if all(len(c) == 1 and c[0][0] == m for c, m in zip(candidats, mots)):
+    if all(len(c) == 1 and c[0][0] == m for c, m in zip(candidats, mots, strict=True)):
         return None
 
     combinaisons = list(islice(product(*candidats), COMBINAISONS_MAX))
     nombres = compter(conn, [requete_saisie([mot for mot, _ in c]) for c in combinaisons], acces)
     meilleure, meilleur_score = None, None
-    for combinaison, nb in zip(combinaisons, nombres):
+    for combinaison, nb in zip(combinaisons, nombres, strict=True):
         if not nb:
             continue
         # Moins de lettres changées d'abord, puis plus de documents
@@ -391,7 +391,7 @@ def suggerer(conn: psycopg.Connection, q: str, acces: FiltreAcces) -> dict:
         # Plusieurs mots : on classe par nombre de documents contenant toute la combinaison
         # ("promesse v" -> "promesse vente" avant "promesse virement")
         nombres = compter(conn, [" & ".join(debut + [mot]) for mot in candidats], acces)
-        candidats = [mot for mot, nb in sorted(zip(candidats, nombres), key=lambda c: -c[1]) if nb]
+        candidats = [mot for mot, nb in sorted(zip(candidats, nombres, strict=True), key=lambda c: -c[1]) if nb]
     completions = [" ".join(debut + [mot]) for mot in candidats[:COMPLETIONS_MAX]]
 
     documents = conn.execute(

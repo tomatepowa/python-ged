@@ -12,7 +12,7 @@ import logging
 import os
 from collections import Counter
 from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import psycopg
@@ -226,7 +226,7 @@ class Indexeur:
 
     def _indexer_fichier(self, source: Source, source_id: int, chemin: Path, forcer: bool) -> str:
         stat = chemin.stat()
-        modifie_le = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
+        modifie_le = datetime.fromtimestamp(stat.st_mtime, tz=UTC)
 
         existant = self.conn.execute(
             "SELECT id, taille, modifie_le, empreinte, statut, methode, contenu, code_doc, nb_pages, "
@@ -302,7 +302,7 @@ class Indexeur:
                 "famille": famille(chemin.suffix),
                 "taille": stat.st_size,
                 # Sous Windows, st_ctime est la date de création du fichier
-                "cree_le": datetime.fromtimestamp(stat.st_ctime, tz=timezone.utc),
+                "cree_le": datetime.fromtimestamp(stat.st_ctime, tz=UTC),
                 "modifie_le": modifie_le,
                 "empreinte": signature,
                 "statut": resultat.statut,
@@ -357,8 +357,8 @@ class Indexeur:
                 "nom": chemin.name,
                 "extension": chemin.suffix.lower(),
                 "famille": famille(chemin.suffix),
-                "cree_le": datetime.fromtimestamp(stat.st_ctime, tz=timezone.utc),
-                "modifie_le": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc),
+                "cree_le": datetime.fromtimestamp(stat.st_ctime, tz=UTC),
+                "modifie_le": datetime.fromtimestamp(stat.st_mtime, tz=UTC),
                 **colonnes_securite(securite),
             },
         )

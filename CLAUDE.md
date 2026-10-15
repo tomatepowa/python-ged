@@ -45,5 +45,7 @@ Demande type : « fais la taxonomie » ou « améliore la taxonomie ».
 ## Développement
 
 - Code, commentaires et messages en français, comme le code existant.
-- Tests : `uv run pytest`.
+- Tests : `uv run pytest`. Linter : `uvx ruff check` (règles dans `pyproject.toml`).
+- Le SQL reste dans les modules métier (`recherche.py`, `documents.py`, `acces.py`…), pas dans
+  `ged/web/app.py` qui ne fait qu'enchaîner requêtes et gabarits.
 - Les fichiers des partages ne sont jamais modifiés : l'indexation est en lecture seule.

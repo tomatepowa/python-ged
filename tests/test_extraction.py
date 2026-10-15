@@ -158,6 +158,18 @@ def test_resolution_ocr_plafonnee_pour_les_photos():
     assert resolution_effective(4000, 3000, 300) == 72
 
 
+def test_avertissements_de_tesseract_masques(capfd):
+    """Tesseract écrit dans la sortie d'erreur (descripteur 2) : masquée le temps de l'appel seulement."""
+    import os
+
+    from ged.ocr import sortie_erreur_muette
+
+    with sortie_erreur_muette():
+        os.write(2, b"Image too small to scale!! (1x36 vs min width of 3)\n")
+    os.write(2, b"visible\n")
+    assert capfd.readouterr().err == "visible\n"
+
+
 def test_texte_ocr_exploitable():
     from ged.ocr import texte_exploitable
 

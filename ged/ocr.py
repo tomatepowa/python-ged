@@ -6,8 +6,11 @@ seulement le fichier de langue (fra.traineddata) dans le dossier `tessdata`.
 
 from __future__ import annotations
 
+import os
 import re
-from collections.abc import Callable
+import sys
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from ged.extraction import Resultat
@@ -73,6 +76,33 @@ def texte_exploitable(contenu: str, vocabulaire: set[str]) -> bool:
     return connus >= MOTS_CONNUS_MIN and connus / len(fragments) >= TAUX_MOTS_CONNUS_MIN
 
 
+@contextmanager
+def sortie_erreur_muette() -> Iterator[None]:
+    """Fait taire la sortie d'erreur du processus le temps d'un appel à Tesseract.
+
+    Tesseract écrit ses avertissements (« Image too small to scale!! », « Line cannot be
+    recognized!! » sur les poussières et traits fins d'un scan) directement dans la sortie
+    d'erreur, sous Python : ils casseraient la barre de progression. Ils sont sans conséquence,
+    la page est reconnue quand même. Les vraies erreurs lèvent une exception.
+    """
+    # Descripteur 2 : celui où écrit Tesseract, quel que soit l'objet sys.stderr de Python
+    descripteur = 2
+    if sys.stderr is not None:
+        sys.stderr.flush()
+    try:
+        copie = os.dup(descripteur)
+    except OSError:  # pas de sortie d'erreur (service, pythonw) : rien à faire taire
+        yield
+        return
+    try:
+        with open(os.devnull, "w") as nulle:
+            os.dup2(nulle.fileno(), descripteur)
+        yield
+    finally:
+        os.dup2(copie, descripteur)
+        os.close(copie)
+
+
 def resolution_effective(largeur_pt: float, hauteur_pt: float, dpi: int) -> int:
     """Résolution de rendu plafonnée à PIXELS_MAX sur le grand côté.
 
@@ -90,6 +120,7 @@ def _ocr_pages(pdf, tessdata: str, langue: str, dpi: int, suivi: Callable[[int, 
             suivi(numero, pdf.page_count)
         dpi_page = resolution_effective(page.rect.width, page.rect.height, dpi)
         # full=True : la page entière est reconnue (cas des scans sans aucune couche texte)
-        couche = page.get_textpage_ocr(language=langue, dpi=dpi_page, full=True, tessdata=tessdata)
+        with sortie_erreur_muette():
+            couche = page.get_textpage_ocr(language=langue, dpi=dpi_page, full=True, tessdata=tessdata)
         pages.append(page.get_text(textpage=couche))
     return pages

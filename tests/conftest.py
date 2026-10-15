@@ -1,8 +1,10 @@
-"""Fabriques de documents de test (générés à la volée, aucun fichier réel)."""
+"""Fabriques de documents de test (générés à la volée, aucun fichier réel) et base de test."""
 
 from __future__ import annotations
 
+import os
 import zipfile
+from importlib.resources import files
 from pathlib import Path
 
 import pytest
@@ -36,3 +38,22 @@ def fabriquer_docx(tmp_path: Path):
         return chemin
 
     return fabriquer
+
+
+@pytest.fixture
+def conn():
+    """Connexion à la base PostgreSQL de test (GED_TEST_BASE), vidée, dans une transaction annulée."""
+    url = os.environ.get("GED_TEST_BASE")
+    if not url:
+        pytest.skip("GED_TEST_BASE non défini (base PostgreSQL de test)")
+    import psycopg
+    from psycopg.rows import dict_row
+
+    with psycopg.connect(url, row_factory=dict_row) as connexion:
+        try:
+            connexion.execute(files("ged").joinpath("schema.sql").read_text(encoding="utf-8"))
+            connexion.execute("TRUNCATE document_tag, tag_retire, tag_dossier, journal_tag, document, tag, "
+                              "vocabulaire, source, reglage RESTART IDENTITY CASCADE")
+            yield connexion
+        finally:
+            connexion.rollback()

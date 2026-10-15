@@ -10,7 +10,9 @@
 # ou s'il apparaît au moins `seuil` fois dans le texte, avec au moins `densite_min`
 # mentions pour 1000 mots (un long document cite tout sans en parler vraiment).
 #
-# Après modification de ce fichier : `ged recalculer` (ne relit pas les fichiers).
+# La taxonomie vit en base : ce fichier est importé au premier démarrage, puis se modifie dans
+# la page Tags. Pour le retravailler : `ged exporter-taxonomie`, modifier, puis
+# `ged importer-taxonomie` (les tags absents du fichier perdent leurs mots-clés).
 #
 # C'EST UN PREMIER JET À COMPLÉTER AVEC LES POLES (liste réelle des logiciels et secteurs).
 

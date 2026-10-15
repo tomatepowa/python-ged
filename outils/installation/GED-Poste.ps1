@@ -9,8 +9,10 @@
     etat     : indique si PostgreSQL tourne
     indexer  : démarre PostgreSQL si besoin, puis indexe les partages de config.toml
     ocr      : démarre PostgreSQL si besoin, puis passe en OCR les scans en attente
-    recalculer : réapplique tags et codes (après modification de taxonomie.toml)
-    analyser : écrit analyse-taxonomie.md (statistiques pour construire taxonomie.toml)
+    recalculer : réapplique tags et codes sans relire les fichiers
+    analyser : écrit analyse-taxonomie.md (statistiques pour compléter la taxonomie)
+    exporter-taxonomie : écrit la taxonomie de la base dans taxonomie.toml
+    importer-taxonomie : remplace la taxonomie de la base par taxonomie.toml (différences affichées), puis recalcule
     preparer : parcours rapide des partages et page pour choisir les dossiers à exclure (avant indexer)
     verifier : vérifie l'installation (base, partages, outils, identification)
     reinitialiser : vide l'index pour repartir de zéro (confirmation demandée), puis relancer indexer
@@ -21,7 +23,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('demarrer', 'arreter', 'etat', 'indexer', 'ocr', 'recalculer', 'reinitialiser', 'analyser', 'preparer', 'verifier')]
+    [ValidateSet('demarrer', 'arreter', 'etat', 'indexer', 'ocr', 'recalculer', 'reinitialiser', 'analyser', 'preparer', 'verifier', 'exporter-taxonomie', 'importer-taxonomie')]
     [string]$Action = 'etat',
 
     [string]$Dossier = (Join-Path $env:LOCALAPPDATA 'ged')

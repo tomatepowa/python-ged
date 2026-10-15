@@ -24,7 +24,7 @@ from ged.extraction import Resultat, extraire, famille
 from ged.ocr import ocr, texte_exploitable
 from ged.progression import Inventaire, Progression
 from ged.tags_manuels import id_tag, reappliquer
-from ged.taxonomie import Taxonomie
+from ged.taxonomie_base import charger as charger_taxonomie
 from ged.texte import code_document
 
 log = logging.getLogger(__name__)
@@ -144,7 +144,7 @@ class Indexeur:
     def __init__(self, cfg: Config, conn: psycopg.Connection):
         self.cfg = cfg
         self.conn = conn
-        self.taxonomie = Taxonomie.charger(cfg.taxonomie)
+        self.taxonomie = charger_taxonomie(conn)
         self._ids_tags: dict[tuple[str, str], int] = {}
 
     # --- Indexation ---------------------------------------------------------------
@@ -420,7 +420,7 @@ class Indexeur:
     def recalculer(self) -> Counter:
         """Réapplique taxonomie, détection de code et filtre OCR au contenu déjà en base.
 
-        À lancer après une modification de taxonomie.toml ou des règles : aucun fichier n'est relu.
+        À lancer après une modification de la taxonomie ou des règles : aucun fichier n'est relu.
         """
         bilan: Counter = Counter()
         rafraichir_vocabulaire(self.conn)

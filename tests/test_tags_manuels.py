@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-from importlib.resources import files
 from pathlib import Path
 
 import pytest
@@ -12,7 +10,7 @@ from fastapi.testclient import TestClient
 from ged.acces import Lecteur
 from ged.config import Config
 from ged.tags_manuels import peut_retirer
-from ged.taxonomie import Taxonomie
+from ged.taxonomie import lire_toml
 from ged.web.app import creer_app
 
 ADMIN = Lecteur("DOM\\dsi", frozenset(), frozenset(), admin=True, sid="S-1-5-21-1-2-3-500")
@@ -74,25 +72,7 @@ def test_pages_d_administration_reservees(client_utilisateur, url):
     assert client_utilisateur.get(url).status_code == 403
 
 
-# --- Sur une base PostgreSQL de test (GED_TEST_BASE), dans une transaction annulée ----------
-
-
-@pytest.fixture
-def conn():
-    url = os.environ.get("GED_TEST_BASE")
-    if not url:
-        pytest.skip("GED_TEST_BASE non défini (base PostgreSQL de test)")
-    import psycopg
-    from psycopg.rows import dict_row
-
-    with psycopg.connect(url, row_factory=dict_row) as connexion:
-        try:
-            connexion.execute(files("ged").joinpath("schema.sql").read_text(encoding="utf-8"))
-            connexion.execute("TRUNCATE document_tag, tag_retire, tag_dossier, journal_tag, document, tag, "
-                              "vocabulaire, source RESTART IDENTITY CASCADE")
-            yield connexion
-        finally:
-            connexion.rollback()
+# --- Sur une base PostgreSQL de test (GED_TEST_BASE, fixture conn), transaction annulée -----
 
 
 def creer_documents(conn, *chemins: str) -> dict[str, int]:
@@ -117,15 +97,12 @@ def tags_de(conn, document_id: int) -> dict[str, str]:
     }
 
 
-def taxonomie(tmp_path: Path, texte: str = '[logiciel]\nVeeam = ["veeam"]\n') -> Taxonomie:
-    (tmp_path / "taxonomie.toml").write_text(texte, encoding="utf-8")
-    return Taxonomie.charger(tmp_path / "taxonomie.toml")
-
-
 def indexeur(conn, tmp_path: Path, texte: str = '[logiciel]\nVeeam = ["veeam"]\n'):
+    """Indexeur avec cette taxonomie (au format de taxonomie.toml) importée en base."""
+    from ged import taxonomie_base
     from ged.indexeur import Indexeur
 
-    taxonomie(tmp_path, texte)
+    taxonomie_base.importer(conn, lire_toml(texte), "test")
     return Indexeur(Config(url_base="", sources=[], taxonomie=tmp_path / "taxonomie.toml"), conn)
 
 

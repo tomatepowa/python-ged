@@ -12,8 +12,9 @@ Les administrateurs de la GED, en plus :
   « dossier »), sous-dossiers compris, y compris ceux qui y arriveront plus tard ;
 - créent, renomment, fusionnent et suppriment les tags (page Tags).
 
-Chaque action est notée dans journal_tag. Les tags de taxonomie.toml ne se renomment, fusionnent
-ni suppriment ici : le recalcul suivant les recréerait sous leur ancien nom.
+Chaque action est notée dans journal_tag. Les mots-clés de la taxonomie sont attachés au tag
+(voir ged.taxonomie_base) : ils le suivent quand il est renommé, passent au tag cible d'une
+fusion et disparaissent avec lui.
 """
 
 from __future__ import annotations
@@ -83,7 +84,7 @@ def tous_les_tags(conn: psycopg.Connection) -> list[dict]:
 
 
 def id_tag(conn: psycopg.Connection, categorie: str, libelle: str) -> int:
-    """Identifiant d'un tag de la taxonomie, créé au besoin (indexation, recalcul)."""
+    """Identifiant d'un tag, créé au besoin (indexation, recalcul, import de la taxonomie)."""
     return conn.execute(
         "INSERT INTO tag (categorie, libelle) VALUES (%s, %s) "
         "ON CONFLICT (categorie, libelle) DO UPDATE SET libelle = EXCLUDED.libelle RETURNING id",
@@ -101,10 +102,10 @@ def _nettoyer(categorie: str, libelle: str) -> tuple[str, str]:
     return categorie, libelle[:1].upper() + libelle[1:]
 
 
-def _homonyme(conn: psycopg.Connection, categorie: str, libelle: str, sauf: int | None = None) -> dict | None:
+def homonyme(conn: psycopg.Connection, categorie: str, libelle: str, sauf: int | None = None) -> dict | None:
     """Tag de même nom, sans tenir compte de la casse ni des accents (« veeam » = « Véeam »)."""
     return conn.execute(
-        "SELECT id, categorie, libelle FROM tag WHERE ged_normaliser(categorie) = ged_normaliser(%s) "
+        "SELECT id, categorie, libelle, mots_cles FROM tag WHERE ged_normaliser(categorie) = ged_normaliser(%s) "
         "AND ged_normaliser(libelle) = ged_normaliser(%s) AND id IS DISTINCT FROM %s",
         (categorie, libelle, sauf),
     ).fetchone()
@@ -249,9 +250,9 @@ def retirer_du_dossier(conn: psycopg.Connection, regle_id: int, lecteur: Lecteur
 
 
 def tags_administres(conn: psycopg.Connection) -> list[dict]:
-    """Tous les tags et leur usage : documents par origine, dossiers, création."""
+    """Tous les tags, leurs mots-clés et leur usage : documents par origine, dossiers, création."""
     return conn.execute(
-        "SELECT t.id, t.categorie, t.libelle, t.cree_par, t.cree_le, "
+        "SELECT t.id, t.categorie, t.libelle, t.cree_par, t.cree_le, t.mots_cles, "
         "count(dt.document_id) FILTER (WHERE dt.origine = 'auto') AS nb_auto, "
         "count(dt.document_id) FILTER (WHERE dt.origine = 'dossier') AS nb_dossier, "
         "count(dt.document_id) FILTER (WHERE dt.origine = 'manuel') AS nb_manuel, "
@@ -264,7 +265,7 @@ def tags_administres(conn: psycopg.Connection) -> list[dict]:
 
 def creer(conn: psycopg.Connection, categorie: str, libelle: str, lecteur: Lecteur) -> int:
     categorie, libelle = _nettoyer(categorie, libelle)
-    if existant := _homonyme(conn, categorie, libelle):
+    if existant := homonyme(conn, categorie, libelle):
         raise TagInvalide(f"Le tag « {existant['libelle']} » ({existant['categorie']}) existe déjà.")
     tag = conn.execute(
         "INSERT INTO tag (categorie, libelle, cree_par, cree_le) VALUES (%s, %s, %s, now()) RETURNING id",
@@ -276,7 +277,7 @@ def creer(conn: psycopg.Connection, categorie: str, libelle: str, lecteur: Lecte
 
 def renommer(conn: psycopg.Connection, tag_id: int, categorie: str, libelle: str, lecteur: Lecteur) -> None:
     categorie, libelle = _nettoyer(categorie, libelle)
-    if existant := _homonyme(conn, categorie, libelle, sauf=tag_id):
+    if existant := homonyme(conn, categorie, libelle, sauf=tag_id):
         raise TagInvalide(f"« {existant['libelle']} » ({existant['categorie']}) existe déjà : fusionnez plutôt.")
     ancien = conn.execute("SELECT libelle || ' (' || categorie || ')' AS nom FROM tag WHERE id = %s", (tag_id,)).fetchone()
     if not ancien:
@@ -314,6 +315,14 @@ def fusionner(conn: psycopg.Connection, source_id: int, cible_id: int, lecteur: 
         "INSERT INTO tag_retire (document_id, tag_id, retire_par, retire_le) "
         "SELECT document_id, %(cible)s, retire_par, retire_le FROM tag_retire WHERE tag_id = %(source)s "
         "ON CONFLICT DO NOTHING",
+        {"source": source_id, "cible": cible_id},
+    )
+    # Mots-clés de la taxonomie : ceux du tag fusionné s'ajoutent à ceux de la cible
+    conn.execute(
+        "UPDATE tag c SET mots_cles = (SELECT array_agg(m ORDER BY rang) FROM ("
+        "  SELECT DISTINCT ON (ged_normaliser(m)) m, rang FROM unnest(coalesce(c.mots_cles, '{}') || s.mots_cles) "
+        "  WITH ORDINALITY AS u(m, rang) ORDER BY ged_normaliser(m), rang) AS mots) "
+        "FROM tag s WHERE c.id = %(cible)s AND s.id = %(source)s AND cardinality(s.mots_cles) > 0",
         {"source": source_id, "cible": cible_id},
     )
     journaliser(conn, auteur(lecteur), "fusion", cible_id, detail=f"{noms[source_id]} fusionné dedans ({nb} documents)")

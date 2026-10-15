@@ -135,7 +135,7 @@ CREATE OR REPLACE FUNCTION ged_peut_lire(acl jsonb, sids text[], sids_refus text
 -- document_tag.origine : auto (taxonomie) | dossier (règle d'un dossier) | manuel (sur le document)
 ALTER TABLE document_tag ADD COLUMN IF NOT EXISTS pose_par text;
 ALTER TABLE document_tag ADD COLUMN IF NOT EXISTS pose_le timestamptz;
--- Tag créé depuis l'interface (NULL : tag de taxonomie.toml)
+-- Tag créé depuis l'interface (NULL : tag importé de taxonomie.toml ou créé par l'indexation)
 ALTER TABLE tag ADD COLUMN IF NOT EXISTS cree_par text;
 
 -- Tag d'un dossier : posé sur tous ses documents, sous-dossiers compris, y compris ceux qui y
@@ -178,3 +178,14 @@ CREATE TABLE IF NOT EXISTS journal_tag (
     detail      text
 );
 CREATE INDEX IF NOT EXISTS journal_tag_le_idx ON journal_tag (le DESC);
+
+-- Taxonomie en base (voir ged/taxonomie_base.py) : mots-clés du tag tels qu'écrits, préfixe
+-- « titre: » compris. NULL ou vide : le tag n'est jamais posé automatiquement.
+ALTER TABLE tag ADD COLUMN IF NOT EXISTS mots_cles text[];
+
+-- Réglages modifiables depuis l'interface : seuil et densite_min de la taxonomie,
+-- taxonomie_importee_le (taxonomie.toml n'est importé d'office qu'une fois)
+CREATE TABLE IF NOT EXISTS reglage (
+    cle     text PRIMARY KEY,
+    valeur  text NOT NULL
+);

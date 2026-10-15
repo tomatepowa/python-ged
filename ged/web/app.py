@@ -1,28 +1,31 @@
 """Application web de recherche.
 
-Les fichiers des partages sont seulement lus. Seuls les tags posés à la main et leur gestion
-par les administrateurs modifient la base depuis l'interface (voir ged.tags_manuels).
+Les fichiers des partages sont seulement lus. Seuls les tags posés à la main, leur gestion et la
+taxonomie (mots-clés des tags) par les administrateurs modifient la base depuis l'interface
+(voir ged.tags_manuels et ged.taxonomie_base).
 """
 
 from __future__ import annotations
 
 import logging
 import mimetypes
+from html import escape
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
+import psycopg
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from ged import config as configuration
-from ged import documents, tags_manuels
+from ged import documents, tags_manuels, taxonomie_base
 from ged.acces import FiltreAcces, Lecteur, diagnostic_acces, filtre_acces, sids_accordant
 from ged.annuaire import AnnuaireAD, nom_complet_local, organiser_groupes, prefixe_machine
 from ged.arborescence import construire_arbre_resultats, dossier_parent, fil_ariane
@@ -31,7 +34,7 @@ from ged.recherche import (
     DOCUMENTS_ARBRE_MAX, PAR_PAGE, ROLES, Filtres, chercher_personnes, facettes, mes_documents, rechercher,
     statistiques, suggerer,
 )
-from ged.taxonomie import Taxonomie
+from ged.recalcul_tags import RecalculEnArrierePlan
 from ged.web.authentification import (
     COOKIE, COOKIE_NAVIGATEUR, Authentification, AuthentificationRefusee, Negociateur, NegociateurSSPI,
     identification_sur_demande, sids_des_comptes,
@@ -430,10 +433,6 @@ def creer_app(
 
     # --- Tags posés à la main -------------------------------------------------------------
 
-    def taxonomie() -> Taxonomie:
-        # Relue à chaque fois : une modification de taxonomie.toml compte sans redémarrer
-        return Taxonomie.charger(cfg.taxonomie)
-
     @app.post("/document/{document_id}/tags")
     async def tags_document(request: Request, document_id: int):
         """Pose un tag existant sur le document, ou en retire un (voir tags_manuels.peut_retirer)."""
@@ -447,7 +446,7 @@ def creer_app(
                     raise HTTPException(404, "Document inconnu")
                 try:
                     if (tag := entier(champs, "retirer")) is not None:
-                        tags_manuels.retirer(conn, document_id, tag, lecteur, taxonomie())
+                        tags_manuels.retirer(conn, document_id, tag, lecteur, taxonomie_base.charger(conn))
                     elif (tag := entier(champs, "tag_id")) is not None:
                         tags_manuels.ajouter(conn, document_id, tag, lecteur)
                 except (tags_manuels.TagInvalide, tags_manuels.RetraitRefuse) as exc:
@@ -477,57 +476,78 @@ def creer_app(
         await run_in_threadpool(appliquer)
         return RedirectResponse("/?" + filtres.lien(), status_code=303)
 
-    # --- Gestion des tags (administrateurs) -------------------------------------------------
+    # --- Gestion des tags et de la taxonomie (administrateurs) --------------------------------
+
+    # Recalculs lancés depuis la page Tags, avec leur propre connexion (ils peuvent durer)
+    recalcul = RecalculEnArrierePlan(lambda: psycopg.connect(cfg.url_base, row_factory=dict_row))
+    app.state.recalcul = recalcul
 
     def exiger_admin(request: Request) -> None:
         if not request.state.lecteur.admin:
             raise HTTPException(403, "Page réservée aux administrateurs de la GED")
 
-    def tags_de_la_taxonomie() -> set[tuple[str, str]]:
-        return {(t.categorie, t.libelle) for t in taxonomie().regles}
-
     @app.get("/admin/tags", response_class=HTMLResponse)
     def admin_tags(request: Request, message: str = "", erreur: str = ""):
         exiger_admin(request)
-        de_la_taxonomie = tags_de_la_taxonomie()
         with pool.connection() as conn:
             tags = tags_manuels.tags_administres(conn)
             categories = tags_manuels.categories(conn)
+            seuil, densite_min = taxonomie_base.reglages(conn)
         par_categorie: dict[str, list[dict]] = {}
         for tag in tags:
-            tag["taxonomie"] = (tag["categorie"], tag["libelle"]) in de_la_taxonomie
             par_categorie.setdefault(tag["categorie"], []).append(tag)
         return templates.TemplateResponse(request, "admin_tags.html", {
             "par_categorie": par_categorie, "tags": tags, "categories": categories,
+            "seuil": seuil, "densite_min": densite_min, "recalcul": recalcul.etat(),
             "message": message, "erreur": erreur,
         })
 
     @app.post("/admin/tags")
     async def admin_tags_modifier(request: Request):
-        """Crée, renomme, fusionne ou supprime un tag."""
+        """Crée, renomme, fusionne ou supprime un tag ; modifie ses mots-clés ou les réglages de la
+        taxonomie (les tags se recalculent ensuite en arrière-plan)."""
         champs = await formulaire(request, admin=True)
         lecteur: Lecteur = request.state.lecteur
         action, tag = champs.get("action", ""), entier(champs, "tag_id")
-        de_la_taxonomie = tags_de_la_taxonomie()
 
         def appliquer() -> str:
             with pool.connection() as conn:
                 if action == "creer":
                     tags_manuels.creer(conn, champs.get("categorie", ""), champs.get("libelle", ""), lecteur)
-                    return "Tag créé."
-                ligne = conn.execute("SELECT categorie, libelle FROM tag WHERE id = %s", (tag,)).fetchone()
+                    return "Tag créé : ajoutez-lui des mots-clés pour qu'il soit posé automatiquement."
+                if action == "reglages":
+                    try:
+                        seuil = int(champs.get("seuil", ""))
+                        densite = float(champs.get("densite_min", "").replace(",", "."))
+                    except ValueError:
+                        raise tags_manuels.TagInvalide("Seuil et densité : des nombres.") from None
+                    if not taxonomie_base.modifier_reglages(conn, seuil, densite, lecteur):
+                        return "Réglages inchangés."
+                    conn.commit()
+                    recalcul.demander(None, "tous les tags")
+                    return "Réglages enregistrés : recalcul de tous les tags lancé."
+                if action == "recalculer":
+                    recalcul.demander(None, "tous les tags")
+                    return "Recalcul de tous les tags lancé."
+                ligne = conn.execute("SELECT libelle FROM tag WHERE id = %s", (tag,)).fetchone()
                 if not ligne:
                     raise tags_manuels.TagInvalide("Ce tag n'existe plus.")
-                # Le recalcul suivant recréerait un tag de la taxonomie sous son ancien nom
-                if (ligne["categorie"], ligne["libelle"]) in de_la_taxonomie:
-                    raise tags_manuels.TagInvalide(
-                        f"« {ligne['libelle']} » vient de taxonomie.toml : c'est là qu'il se renomme ou se retire."
-                    )
+                if action == "mots_cles":
+                    if not taxonomie_base.modifier_mots(conn, tag, champs.get("mots", "").splitlines(), lecteur):
+                        return "Mots-clés inchangés."
+                    conn.commit()
+                    recalcul.demander(tag, f"« {ligne['libelle']} »")
+                    return f"Mots-clés de « {ligne['libelle']} » enregistrés : recalcul du tag lancé."
                 if action == "renommer":
                     tags_manuels.renommer(conn, tag, champs.get("categorie", ""), champs.get("libelle", ""), lecteur)
                     return "Tag renommé."
                 if action == "fusionner":
-                    nb = tags_manuels.fusionner(conn, tag, entier(champs, "cible") or 0, lecteur)
+                    cible = entier(champs, "cible") or 0
+                    nb = tags_manuels.fusionner(conn, tag, cible, lecteur)
+                    conn.commit()
+                    # Les mots-clés du tag fusionné se sont ajoutés à ceux de la cible
+                    libelle_cible = conn.execute("SELECT libelle FROM tag WHERE id = %s", (cible,)).fetchone()["libelle"]
+                    recalcul.demander(cible, f"« {libelle_cible} »")
                     return f"Tags fusionnés ({nb} documents reportés)."
                 if action == "supprimer":
                     nb = tags_manuels.supprimer(conn, tag, lecteur)
@@ -538,7 +558,38 @@ def creer_app(
             message = await run_in_threadpool(appliquer)
         except tags_manuels.TagInvalide as exc:
             return RedirectResponse(avec_message("/admin/tags", "erreur", str(exc)), status_code=303)
-        return RedirectResponse(avec_message("/admin/tags", "message", message), status_code=303)
+        ancre = f"#tag-{tag}" if tag and action in ("mots_cles", "renommer") else ""
+        return RedirectResponse(avec_message(f"/admin/tags{ancre}", "message", message), status_code=303)
+
+    @app.post("/admin/tags/apercu", response_class=HTMLResponse)
+    async def admin_tags_apercu(request: Request):
+        """Fragment HTML : ce que donneraient ces mots-clés, sans rien enregistrer."""
+        champs = await formulaire(request, admin=True)
+
+        def calculer() -> dict:
+            with pool.connection() as conn:
+                return taxonomie_base.apercu(conn, entier(champs, "tag_id"), champs.get("mots", "").splitlines())
+
+        try:
+            resultat = await run_in_threadpool(calculer)
+        except tags_manuels.TagInvalide as exc:
+            return HTMLResponse(f'<p class="avertissement">{escape(str(exc))}</p>')
+        return templates.TemplateResponse(request, "_apercu_tag.html", {"apercu": resultat})
+
+    @app.get("/admin/tags/recalcul")
+    def admin_tags_recalcul(request: Request):
+        """Avancement du recalcul en arrière-plan (JSON, interrogé par la page Tags)."""
+        exiger_admin(request)
+        return recalcul.etat()
+
+    @app.get("/admin/taxonomie.toml")
+    def admin_taxonomie_export(request: Request):
+        """Export de la taxonomie au format de taxonomie.toml (sauvegarde, versionnage)."""
+        exiger_admin(request)
+        with pool.connection() as conn:
+            texte = taxonomie_base.exporter(conn)
+        return Response(texte, media_type="application/toml; charset=utf-8",
+                        headers={"Content-Disposition": 'attachment; filename="taxonomie.toml"'})
 
     @app.get("/admin/journal", response_class=HTMLResponse)
     def admin_journal(request: Request, par: str = "", tag: int | None = None):

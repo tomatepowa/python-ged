@@ -34,8 +34,20 @@ def main(argv: list[str] | None = None) -> None:
     p_ocr.add_argument("--limite", type=int, help="nombre maximum de documents à traiter")
 
     commandes.add_parser(
-        "recalculer", help="réapplique tags, codes et filtre OCR sans relire les fichiers (après modif. de taxonomie.toml)"
+        "recalculer", help="réapplique tags, codes et filtre OCR sans relire les fichiers (après modif. de la taxonomie)"
     )
+
+    p_exporter = commandes.add_parser(
+        "exporter-taxonomie", help="écrit la taxonomie de la base (mots-clés des tags) dans un fichier TOML"
+    )
+    p_exporter.add_argument("--sortie", help="fichier produit (défaut : taxonomie.toml, ou [taxonomie] de config.toml)")
+
+    p_importer = commandes.add_parser(
+        "importer-taxonomie", help="remplace la taxonomie de la base par celle d'un fichier TOML, puis recalcule les tags"
+    )
+    p_importer.add_argument("--fichier", help="fichier lu (défaut : taxonomie.toml, ou [taxonomie] de config.toml)")
+    p_importer.add_argument("--oui", action="store_true", help="sans demander de confirmation")
+    p_importer.add_argument("--sans-recalcul", action="store_true", help="ne pas recalculer les tags ensuite")
 
     commandes.add_parser("serveur", help="lance l'interface web de recherche")
 
@@ -64,7 +76,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.commande == "init-db":
         from ged.db import initialiser
 
-        initialiser(cfg.url_base)
+        initialiser(cfg.url_base, cfg.taxonomie)
         print("Schéma à jour.")
 
     elif args.commande == "preparer":
@@ -94,7 +106,7 @@ def main(argv: list[str] | None = None) -> None:
         from ged.indexeur import Indexeur
 
         # Schéma idempotent : une mise à jour du code qui ajoute des colonnes n'oblige pas à penser à init-db
-        initialiser(cfg.url_base)
+        initialiser(cfg.url_base, cfg.taxonomie)
         with connecter(cfg.url_base) as conn:
             bilan = Indexeur(cfg, conn).indexer(forcer=args.forcer, noms_sources=args.source)
         _afficher_bilan("Indexation terminée", bilan)
@@ -110,23 +122,82 @@ def main(argv: list[str] | None = None) -> None:
         _afficher_bilan("OCR terminé", bilan)
 
     elif args.commande == "recalculer":
-        from ged.db import connecter
+        from ged.db import connecter, initialiser
         from ged.indexeur import Indexeur
+        from ged.recalcul_tags import RecalculEnCours, verrou_recalcul
 
+        initialiser(cfg.url_base, cfg.taxonomie)
         with connecter(cfg.url_base) as conn:
-            bilan = Indexeur(cfg, conn).recalculer()
+            try:
+                with verrou_recalcul(conn):
+                    bilan = Indexeur(cfg, conn).recalculer()
+            except RecalculEnCours as exc:
+                sys.exit(f"{exc} Relancez une fois qu'il est terminé.")
         _afficher_bilan("Recalcul terminé", bilan)
+
+    elif args.commande == "exporter-taxonomie":
+        from pathlib import Path
+
+        from ged.db import connecter, initialiser
+        from ged.taxonomie_base import exporter
+
+        initialiser(cfg.url_base, cfg.taxonomie)
+        sortie = Path(args.sortie) if args.sortie else cfg.taxonomie
+        with connecter(cfg.url_base) as conn:
+            sortie.write_text(exporter(conn), encoding="utf-8")
+        print(f"Taxonomie exportée dans {sortie.resolve()}.")
+
+    elif args.commande == "importer-taxonomie":
+        from pathlib import Path
+
+        from ged.db import connecter, initialiser
+        from ged.recalcul_tags import RecalculEnCours, verrou_recalcul
+        from ged.taxonomie import lire_toml
+        from ged.taxonomie_base import differences, importer, recalculer_tous
+
+        fichier = Path(args.fichier) if args.fichier else cfg.taxonomie
+        if not fichier.is_file():
+            sys.exit(f"Fichier introuvable : {fichier.resolve()}")
+        try:
+            nouvelle = lire_toml(fichier.read_text(encoding="utf-8"))
+        except ValueError as exc:
+            sys.exit(f"{fichier} illisible : {exc}")
+        initialiser(cfg.url_base)
+        with connecter(cfg.url_base) as conn:
+            changements = differences(conn, nouvelle)
+            if not changements:
+                print("La base a déjà cette taxonomie : rien à importer.")
+                return
+            print(f"Import de {fichier.resolve()} :")
+            for ligne in changements:
+                print(f"  {ligne}")
+            if not args.oui and input("Tapez OUI pour importer : ").strip() != "OUI":
+                sys.exit("Abandon : rien n'a été modifié.")
+            importer(conn, nouvelle, f"import de {fichier.name}")
+            conn.commit()
+            print(f"Taxonomie importée ({len(changements)} changements).")
+            if args.sans_recalcul:
+                print("Tags non recalculés : lancez « ged recalculer » ou « Recalculer tout » dans la page Tags.")
+                return
+            try:
+                with verrou_recalcul(conn):
+                    bilan = recalculer_tous(conn)
+            except RecalculEnCours as exc:
+                sys.exit(f"{exc} Recalculez les tags une fois qu'il est terminé.")
+        print(f"Tags recalculés sur {bilan['examines']} documents.")
 
     elif args.commande == "analyser":
         from pathlib import Path
 
         from ged.analyse import charger, rapport
-        from ged.db import connecter
-        from ged.taxonomie import Taxonomie
+        from ged.db import connecter, initialiser
+        from ged.taxonomie_base import charger as charger_taxonomie
 
+        initialiser(cfg.url_base, cfg.taxonomie)
         with connecter(cfg.url_base) as conn:
             documents, comptes = charger(conn)
-        texte = rapport(documents, Taxonomie.charger(cfg.taxonomie), comptes, min_docs=args.min_docs)
+            taxonomie = charger_taxonomie(conn)
+        texte = rapport(documents, taxonomie, comptes, min_docs=args.min_docs)
         Path(args.sortie).write_text(texte, encoding="utf-8")
         print(f"Rapport écrit dans {Path(args.sortie).resolve()} ({len(documents)} documents analysés).")
         print("Relisez-le avant de le partager : il peut contenir des noms de personnes ou de projets.")
@@ -135,7 +206,7 @@ def main(argv: list[str] | None = None) -> None:
         from ged.db import connecter, initialiser, vider_index
         from ged.tags_manuels import nb_poses_a_la_main
 
-        initialiser(cfg.url_base)
+        initialiser(cfg.url_base, cfg.taxonomie)
         with connecter(cfg.url_base) as conn:
             nb = conn.execute(
                 "SELECT (SELECT count(*) FROM document WHERE supprime_le IS NULL) AS documents, (SELECT count(*) FROM source) AS sources"
@@ -145,7 +216,7 @@ def main(argv: list[str] | None = None) -> None:
             if any(main.values()):
                 print(f"Le travail fait à la main sera perdu : {main['manuels']} tags posés sur des documents, "
                       f"{main['retires']} tags retirés, {main['dossiers']} tags de dossiers.")
-            print("Il sera entièrement vidé ; les fichiers des partages ne sont pas touchés.")
+            print("Il sera entièrement vidé (la taxonomie est gardée) ; les fichiers des partages ne sont pas touchés.")
             if not args.oui and input("Tapez OUI pour confirmer : ").strip() != "OUI":
                 sys.exit("Abandon : rien n'a été modifié.")
             vider_index(conn)
@@ -158,7 +229,7 @@ def main(argv: list[str] | None = None) -> None:
         from ged.db import initialiser
         from ged.web.app import creer_app
 
-        initialiser(cfg.url_base)
+        initialiser(cfg.url_base, cfg.taxonomie)
         # localhost plutôt que 127.0.0.1 : le navigateur n'y envoie la session Windows que sous ce nom
         hote = "localhost" if cfg.hote in ("127.0.0.1", "0.0.0.0") else cfg.hote
         print(f"Interface disponible sur http://{hote}:{cfg.port}")

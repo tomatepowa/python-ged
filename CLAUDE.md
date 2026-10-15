@@ -14,17 +14,26 @@ Le groupe n'a pas encore de politique sur l'IA. Les documents indexés sont inte
 - **Ne pas lire config.toml** : il contient le mot de passe de la base.
 - **Ne pas lire exclusions.toml** (écrit par `ged preparer`) : chemins internes des partages.
   Ne pas lancer `ged preparer` ni `ged verifier` sur la vraie configuration : c'est à l'utilisateur.
-- Ne travailler que sur le code, `taxonomie.toml` et le rapport `analyse-taxonomie.md`.
+- Ne travailler que sur le code, `taxonomie.toml` (export de la taxonomie) et le rapport
+  `analyse-taxonomie.md`. Ne pas lancer `ged exporter-taxonomie` ni `ged importer-taxonomie` :
+  ils lisent et écrivent la base, c'est à l'utilisateur.
 
 ## Construire ou ajuster la taxonomie
 
 Demande type : « fais la taxonomie » ou « améliore la taxonomie ».
 
+La taxonomie vit en base et se modifie dans la page Tags (aperçu, recalcul en arrière-plan).
+`taxonomie.toml` en est l'export : on travaille dessus, puis l'utilisateur le réimporte.
+
+0. Demander à l'utilisateur d'exporter la taxonomie actuelle, pour partir de la base et non
+   d'un fichier ancien : `.\outils\installation\GED-Poste.ps1 exporter-taxonomie` (ou bouton
+   « Exporter taxonomie.toml » de la page Tags, fichier à placer à la racine du projet).
 1. Si `analyse-taxonomie.md` est absent ou ancien, demander à l'utilisateur de le produire et
    de le relire (il peut contenir des noms de personnes) :
    `.\outils\installation\GED-Poste.ps1 analyser` (ou `uv run ged analyser`).
    Ne pas le lancer soi-même sans accord.
-2. Lire `analyse-taxonomie.md` et `taxonomie.toml` (son en-tête décrit le format).
+2. Lire `analyse-taxonomie.md` et `taxonomie.toml` (son en-tête décrit le format ; un tag
+   `= []` existe sans mot-clé : posé seulement à la main ou par dossier).
 3. Proposer les changements **avant** de modifier le fichier, sous forme de liste
    « ajout / modification / retrait », avec le nombre de documents concernés d'après le rapport.
    Attendre la validation de l'utilisateur.
@@ -40,9 +49,11 @@ Demande type : « fais la taxonomie » ou « améliore la taxonomie ».
    - pas de mot-clé trop court ou ambigu sans `titre:` (« ad », « rh », « ins ») ;
    - ignorer les noms de personnes, les identifiants et les mots vides du rapport ;
    - les noms de dossiers récurrents et les dossiers peu couverts sont les meilleures pistes.
-5. Après validation : modifier `taxonomie.toml`, puis demander à l'utilisateur de lancer
-   `.\outils\installation\GED-Poste.ps1 recalculer` (réapplique les tags sans relire les fichiers),
-   puis `analyser` à nouveau pour vérifier la couverture.
+5. Après validation : modifier `taxonomie.toml` (ne pas retirer un tag du fichier sans l'avoir
+   proposé : il perdrait ses mots-clés à l'import), puis demander à l'utilisateur de lancer
+   `.\outils\installation\GED-Poste.ps1 importer-taxonomie` (affiche les différences, demande
+   confirmation, puis recalcule les tags), puis `analyser` à nouveau pour vérifier la couverture.
+   Pour un ajustement ponctuel, l'utilisateur peut aussi passer par la page Tags et son aperçu.
 
 ## Développement
 

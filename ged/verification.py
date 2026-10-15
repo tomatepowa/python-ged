@@ -96,15 +96,30 @@ def verifier_exclusions(cfg: Config) -> Verification:
 
 
 def verifier_taxonomie(cfg: Config) -> Verification:
-    from ged.taxonomie import Taxonomie
+    """La taxonomie vit en base ; taxonomie.toml n'est importé qu'au premier démarrage."""
+    import psycopg
 
+    from ged.taxonomie import lire_toml
+
+    try:
+        with psycopg.connect(cfg.url_base, connect_timeout=5) as conn:
+            if conn.execute("SELECT to_regclass('reglage') IS NOT NULL").fetchone()[0] and conn.execute(
+                "SELECT 1 FROM reglage WHERE cle = 'taxonomie_importee_le'"
+            ).fetchone():
+                nb = conn.execute("SELECT count(*) FROM tag WHERE cardinality(mots_cles) > 0").fetchone()[0]
+                if not nb:
+                    return Verification("Taxonomie", ATTENTION, "aucun tag n'a de mot-clé : aucun tag ne sera posé")
+                return Verification("Taxonomie", OK, f"{nb} tags avec des mots-clés (en base, page Tags)")
+    except psycopg.Error:
+        pass  # base injoignable : signalé par la vérification de la base
     if not cfg.taxonomie.is_file():
         return Verification("Taxonomie", ATTENTION, f"{cfg.taxonomie} absent : aucun tag ne sera posé")
     try:
-        taxonomie = Taxonomie.charger(cfg.taxonomie)
-    except Exception as exc:  # TOML invalide, catégorie mal formée...
+        definition = lire_toml(cfg.taxonomie.read_text(encoding="utf-8"))
+    except (ValueError, OSError) as exc:
         return Verification("Taxonomie", ERREUR, f"{cfg.taxonomie.name} illisible : {exc}")
-    return Verification("Taxonomie", OK, f"{len(taxonomie.regles)} tags")
+    nb = sum(1 for mots in definition.mots.values() if mots)
+    return Verification("Taxonomie", OK, f"{cfg.taxonomie.name} : {nb} tags, importés au premier démarrage")
 
 
 def verifier_outils(cfg: Config) -> list[Verification]:

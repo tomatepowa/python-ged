@@ -607,3 +607,21 @@ table.admin-tags td { vertical-align: top; }
 .actions-tag .bouton { padding: .2rem .6rem; font-size: .8rem; }
 .bouton.danger { color: #c0392b; }
 .filtre-journal { margin: .5rem 0 1rem; }
+
+/* Taxonomie : mots-clés des tags, aperçu, recalcul en arrière-plan (page Tags) */
+.taxonomie-outils { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem 1.2rem; margin: 1rem 0; }
+.taxonomie-outils form { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.taxonomie-outils input.court { width: 4.5rem; }
+.recalcul:empty { display: none; }
+.recalcul { margin: .6rem 0; font-size: .9rem; }
+.recalcul progress { vertical-align: middle; width: 12rem; }
+td.mots-cles { max-width: 26rem; }
+td.mots-cles code { display: inline-block; margin: 0 .15rem .15rem 0; font-size: .78rem; }
+td.mots-cles code.titre { font-style: italic; }
+.edition-mots { flex-direction: column; align-items: stretch !important; }
+.edition-mots textarea { display: block; width: 100%; max-width: 30rem; font-family: ui-monospace, Consolas, monospace; font-size: .85rem; }
+.apercu-tag { border-left: 3px solid var(--accent); padding: .2rem .7rem; margin-top: .3rem; max-width: 36rem; font-size: .88rem; }
+.apercu-tag table { font-size: .82rem; }
+.exemples-apercu { margin: .2rem 0 .5rem; padding-left: 1.1rem; font-size: .82rem; }
+.gain { color: #1e8449; font-weight: 600; }
+.perte { color: #c0392b; font-weight: 600; }

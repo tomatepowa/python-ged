@@ -1,0 +1,33 @@
+{# Aperçu des mots-clés d'un tag, avant enregistrement (fragment chargé par la page Tags) #}
+{% set a = apercu %}
+<div class="apercu-tag">
+  <p><strong>{{ a.total }}</strong> document{{ 's' if a.total > 1 }} porterai{{ 'en' if a.total > 1 }}t ce tag par la
+    taxonomie (aujourd'hui {{ a.actuels }}) :
+    <span class="gain">+{{ a.nb_gagnes }}</span>, <span class="perte">−{{ a.nb_perdus }}</span>.
+    {% if a.nb_retires %}<span class="note">{{ a.nb_retires }} écarté{{ 's' if a.nb_retires > 1 }} : tag retiré à la main par un administrateur.</span>{% endif %}
+  </p>
+  {% if a.mots %}
+  <table class="mots-apercu">
+    <thead><tr><th>Mot-clé</th><th class="nombre" title="Documents où ce mot-clé suffirait à poser le tag">Documents</th><th></th></tr></thead>
+    <tbody>
+    {% for m in a.mots %}
+      <tr><td><code>{{ m.mot }}</code></td><td class="nombre">{{ m.nb }}</td><td class="note">{{ m.alerte }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% if a.gagnes %}
+  <p class="petit"><strong>Gagnés</strong>{% if a.nb_gagnes > a.gagnes | length %} ({{ a.gagnes | length }} exemples sur {{ a.nb_gagnes }}){% endif %} :</p>
+  <ul class="exemples-apercu">
+    {% for d in a.gagnes %}<li><a href="/document/{{ d.id }}" target="_blank" class="chemin">{{ d.chemin }}</a> <span class="note">— {{ d.raison }}</span></li>{% endfor %}
+  </ul>
+  {% endif %}
+  {% if a.perdus %}
+  <p class="petit"><strong>Perdus</strong>{% if a.nb_perdus > a.perdus | length %} ({{ a.perdus | length }} exemples sur {{ a.nb_perdus }}){% endif %} :</p>
+  <ul class="exemples-apercu">
+    {% for d in a.perdus %}<li><a href="/document/{{ d.id }}" target="_blank" class="chemin">{{ d.chemin }}</a></li>{% endfor %}
+  </ul>
+  {% endif %}
+  <p class="note petit">{{ a.examines }} document{{ 's' if a.examines > 1 }} examiné{{ 's' if a.examines > 1 }}{% if a.parcours_complet %}
+    (tout l'index : un mot-clé n'est fait que de mots vides){% endif %}. Rien n'est enregistré tant que vous ne cliquez pas sur Enregistrer.</p>
+</div>

@@ -60,7 +60,7 @@ Les fichiers ne sont **ni déplacés, ni modifiés** : l'arborescence actuelle r
 
 **Documents**
 - **Fiche** : emplacement, code documentaire, tags, auteur et dernier modificateur (propriétés Office / PDF), propriétaire, droits NTFS traduits comme dans l'onglet Sécurité, copies identiques ailleurs, texte extrait.
-- **Tags automatiques** par mots-clés ([`taxonomie.toml`](taxonomie.toml)) : logiciel, secteur, type de note.
+- **Tags automatiques** par mots-clés, modifiables dans la page Tags (aperçu avant d'enregistrer) : logiciel, secteur, type de note.
 - **Code documentaire** détecté dans le nom du fichier, sinon en tête du texte (`DSI-INFRA-NT-001-v02`, `NT.OC.GSI.01`, `NT_OC_GSI_01`).
 - **OCR** des PDF scannés et des images ; le « texte » des photos et schémas sans écriture est écarté.
 
@@ -183,11 +183,13 @@ pole = "Infra"
 
 Un dossier exclu sort de l'index au passage suivant de `ged indexer` (et y revient si le motif est retiré) ; son chemin s'affiche dans les filtres actifs quand on clique dessus dans l'arborescence.
 
-**Tags** : [`taxonomie.toml`](taxonomie.toml) associe à chaque libellé des mots-clés (préfixe `titre:` pour un mot qui ne compte que dans le nom ou le titre). `ged recalculer` réapplique les règles sans relire les fichiers ; `ged analyser` produit un rapport (dossiers, mots fréquents des noms, couverture des tags) pour la construire, et [`CLAUDE.md`](CLAUDE.md) décrit la marche à suivre avec Claude Code, si la politique du groupe l'autorise. La liste fournie est un premier jet à compléter avec les pôles.
+**Tags automatiques (taxonomie).** Chaque tag peut avoir des mots-clés (préfixe `titre:` pour un mot qui ne compte que dans le nom ou le titre) ; ils sont **en base** et se modifient dans la page Tags. [`taxonomie.toml`](taxonomie.toml) sert d'import et d'export : il est importé d'office au premier démarrage (`init-db`, `indexer`, `serveur`…), une seule fois ; `ged exporter-taxonomie` (ou le bouton **Exporter** de la page) écrit la taxonomie de la base au même format, pour la sauvegarder, la versionner ou la retravailler ; `ged importer-taxonomie` la remplace par celle du fichier après avoir affiché les différences (les tags absents du fichier perdent leurs mots-clés mais restent), puis recalcule les tags. `ged recalculer` réapplique les règles sans relire les fichiers ; `ged analyser` produit un rapport (dossiers, mots fréquents des noms, couverture des tags) pour la compléter, et [`CLAUDE.md`](CLAUDE.md) décrit la marche à suivre avec Claude Code, si la politique du groupe l'autorise. La liste fournie est un premier jet à compléter avec les pôles.
 
-**Tags posés à la main.** Sur la fiche d'un document, chacun peut **ajouter** un tag de la liste et retirer (**×**) ceux qu'il a posés ; si la taxonomie ou un dossier donnent aussi ce tag au document, il le garde à ce titre. Les administrateurs de la GED retirent n'importe quel tag, définitivement (la taxonomie ne le remet plus), et après un clic sur un dossier, **Poser sur le dossier** donne un tag à tous ses documents, sous-dossiers compris, y compris ceux qui y arriveront. Ces choix sont gardés en base, respectés par `ged indexer` et `ged recalculer`, et perdus par `ged reinitialiser` (qui le signale).
+**Tags posés à la main.** Sur la fiche d'un document, chacun peut **ajouter** un tag de la liste et retirer (**×**) ceux qu'il a posés ; si la taxonomie ou un dossier donnent aussi ce tag au document, il le garde à ce titre. Les administrateurs de la GED retirent n'importe quel tag, définitivement (la taxonomie ne le remet plus), et après un clic sur un dossier, **Poser sur le dossier** donne un tag à tous ses documents, sous-dossiers compris, y compris ceux qui y arriveront. Ces choix sont gardés en base, respectés par `ged indexer` et `ged recalculer`, et perdus par `ged reinitialiser` (qui le signale ; les tags et leurs mots-clés, eux, sont gardés).
 
-**Page Tags** (administrateurs) : créer, renommer, fusionner (les poses sont reportées) et supprimer les tags, avec pour chacun son nombre de documents par origine ; le **journal** dit qui a posé, retiré ou modifié quoi, et quand. Les tags de `taxonomie.toml` se renomment ou se retirent dans ce fichier : le recalcul suivant recréerait sinon leur ancien nom. Un tag créé dans la page ne vit qu'en base ; pour qu'il soit aussi posé automatiquement, l'ajouter à `taxonomie.toml` avec ses mots-clés.
+**Page Tags** (administrateurs) : créer, renommer, fusionner (poses, dossiers et mots-clés sont reportés) et supprimer n'importe quel tag, avec pour chacun ses mots-clés et son nombre de documents par origine ; le **journal** dit qui a posé, retiré ou modifié quoi (mots-clés compris), et quand.
+- **Mots-clés** (Modifier) : un par ligne. **Aperçu** montre, sans rien enregistrer, combien de documents porteraient le tag, ceux qu'il gagnerait ou perdrait (avec des exemples et le mot trouvé) et ce que trouve chaque mot-clé, en signalant les mots trop courts sans `titre:`. Le calcul applique la règle exacte aux documents retenus par l'index plein texte (tout l'index si un mot-clé n'est fait que de mots vides).
+- **Enregistrer** relance le calcul de ce seul tag **en arrière-plan** ; les **réglages** (seuil, densité) et **Recalculer tout** recalculent tous les documents. Une barre d'avancement s'affiche en haut de la page, qui reste utilisable ; un seul recalcul à la fois (les demandes suivantes attendent, et `ged recalculer` refuse de démarrer pendant ce temps).
 
 ## Droits d'accès et identification
 
@@ -223,6 +225,8 @@ uv run ged indexer             # nouveautés seulement (barre de progression, te
 uv run ged indexer --forcer    # relit tout (le texte OCR des fichiers inchangés est conservé)
 uv run ged ocr [--limite 50]   # scans en attente d'OCR, éventuellement par lots
 uv run ged recalculer          # réapplique tags et codes sans relire les fichiers
+uv run ged exporter-taxonomie  # écrit la taxonomie de la base dans taxonomie.toml (--sortie autre.toml)
+uv run ged importer-taxonomie  # remplace la taxonomie par celle du fichier, puis recalcule (--fichier, --oui)
 uv run ged analyser            # rapport analyse-taxonomie.md pour construire les tags
 uv run ged serveur             # interface sur http://localhost:8000
 uv run ged reinitialiser       # vide l'index (confirmation demandée)
@@ -248,7 +252,7 @@ uv sync                 # dépendances, y compris de développement
 uv run pytest           # tests : documents générés à la volée, pas de PostgreSQL nécessaire
 ```
 
-Les tests SQL du filtrage des droits tournent en plus sur une base de test jetable si `GED_TEST_BASE` est défini (`postgresql://...`), dans une transaction annulée. Aucun document réel n'est nécessaire, ni ne doit être ajouté au dépôt. Captures du README : [`outils/demo`](outils/demo).
+Les tests SQL (filtrage des droits, tags, taxonomie) tournent en plus sur une base de test jetable si `GED_TEST_BASE` est défini (`postgresql://...`), par exemple un conteneur `postgres:16` ; elle est vidée au début de chaque test. Aucun document réel n'est nécessaire, ni ne doit être ajouté au dépôt. Captures du README : [`outils/demo`](outils/demo).
 
 ```
 ged/
@@ -257,7 +261,9 @@ ged/
 ├── schema.sql       # schéma PostgreSQL (idempotent)
 ├── extraction.py    # texte et métadonnées par format ; ocr.py : OCR
 ├── indexeur.py      # parcours des sources, indexation incrémentale
-├── taxonomie.py     # tags automatiques ; texte.py : normalisation, code documentaire
+├── taxonomie.py     # tags automatiques, format TOML ; texte.py : normalisation, code documentaire
+├── taxonomie_base.py # taxonomie en base : import/export, aperçu, recalcul ; recalcul_tags.py : en arrière-plan
+├── tags_manuels.py  # tags posés à la main, gestion des tags, journal
 ├── recherche.py     # plein texte, filtres, correction, suggestions ; extraits.py, arborescence.py
 ├── droits.py        # droits NTFS et des partages (pywin32)
 ├── acces.py         # qui peut voir quoi : filtre SQL selon les droits de la personne

@@ -4,10 +4,36 @@
 {% block contenu %}
 <h1>Tags</h1>
 <p class="note">Les utilisateurs posent les tags de cette liste sur les documents qu'ils voient, et retirent ceux
-qu'ils ont posés. Les tags de <code>taxonomie.toml</code> se posent automatiquement d'après leurs mots-clés ; ils se
-renomment ou se retirent dans ce fichier. <a href="/admin/journal">Journal des tags →</a></p>
+qu'ils ont posés. Un tag qui a des <strong>mots-clés</strong> est aussi posé automatiquement (la taxonomie) : modifiez-les
+avec un aperçu avant d'enregistrer, les tags se recalculent ensuite en arrière-plan.
+<a href="/admin/journal">Journal des tags →</a></p>
 {% if message %}<p class="confirmation">{{ message }}</p>{% endif %}
 {% if erreur %}<p class="avertissement">{{ erreur }}</p>{% endif %}
+
+<div id="recalcul" class="recalcul" aria-live="polite"
+     data-actif="{{ 'oui' if recalcul.en_cours or recalcul.en_attente else '' }}">
+  {% if recalcul.en_cours %}Recalcul de {{ recalcul.libelle }}…
+  {% elif recalcul.erreur %}<span class="perte">{{ recalcul.erreur }}</span>
+  {% elif recalcul.message %}{{ recalcul.message }}{% endif %}
+</div>
+
+<div class="taxonomie-outils">
+  <form method="post" action="/admin/tags" class="admin-tags">
+    <input type="hidden" name="action" value="reglages">
+    <strong>Réglages :</strong>
+    <label title="Nombre minimal de mentions d'un mot-clé dans le texte (dans le nom du fichier, une seule suffit)">seuil
+      <input name="seuil" type="number" min="1" max="100" value="{{ seuil }}" required class="court"></label>
+    <label title="Mentions pour 1000 mots au minimum : un long document cite tout sans en parler vraiment">densité
+      <input name="densite_min" type="number" min="0" max="100" step="0.1" value="{{ densite_min }}" required class="court"></label>
+    <button type="submit" class="bouton secondaire"
+            onclick="return confirm('Enregistrer les réglages et recalculer les tags de tous les documents ?')">Enregistrer</button>
+  </form>
+  <form method="post" action="/admin/tags">
+    <input type="hidden" name="action" value="recalculer">
+    <button type="submit" class="bouton secondaire" title="Réapplique la taxonomie et les tags de dossiers à tous les documents">Recalculer tout</button>
+  </form>
+  <a class="bouton secondaire" href="/admin/taxonomie.toml" title="Sauvegarde, versionnage ; se réimporte avec « ged importer-taxonomie »">Exporter taxonomie.toml</a>
+</div>
 
 <form method="post" action="/admin/tags" class="admin-tags creation-tag">
   <input type="hidden" name="action" value="creer">
@@ -22,25 +48,36 @@ renomment ou se retirent dans ce fichier. <a href="/admin/journal">Journal des t
 {% for categorie, groupe in par_categorie.items() %}
 <h2>{{ categorie }} <span class="note">({{ groupe | length }})</span></h2>
 <table class="admin-tags">
-  <thead><tr><th>Tag</th><th class="nombre">Documents</th><th>Origine</th><th></th></tr></thead>
+  <thead><tr><th>Tag</th><th>Mots-clés</th><th class="nombre">Documents</th><th></th></tr></thead>
   <tbody>
   {% for t in groupe %}
     {% set total = t.nb_auto + t.nb_dossier + t.nb_manuel %}
-    <tr>
-      <td><a class="badge tag" href="/?tag={{ t.id }}" title="Voir ses documents">{{ t.libelle }}</a></td>
+    <tr id="tag-{{ t.id }}">
+      <td>
+        <a class="badge tag" href="/?tag={{ t.id }}" title="Voir ses documents">{{ t.libelle }}</a>
+        {% if t.cree_par %}<div class="note petit">créé par {{ t.cree_par }}{% if t.cree_le %} le {{ t.cree_le | date }}{% endif %}</div>{% endif %}
+      </td>
+      <td class="mots-cles">
+        {% for m in t.mots_cles or [] %}<code{% if m.startswith('titre:') %} class="titre" title="Ne compte que dans le nom, le titre ou le chemin"{% endif %}>{{ m }}</code> {% else %}<span class="note petit">aucun : posé seulement à la main ou par dossier</span>{% endfor %}
+      </td>
       <td class="nombre" title="taxonomie : {{ t.nb_auto }} · dossiers : {{ t.nb_dossier }} ({{ t.nb_dossiers }} dossier{{ 's' if t.nb_dossiers > 1 }}) · à la main : {{ t.nb_manuel }}{% if t.nb_retires %} · retiré de {{ t.nb_retires }} document{{ 's' if t.nb_retires > 1 }}{% endif %}">
         {{ total }}{% if t.nb_dossier or t.nb_manuel %} <span class="note petit">(dont {% if t.nb_manuel %}{{ t.nb_manuel }} à la main{% endif %}{% if t.nb_manuel and t.nb_dossier %}, {% endif %}{% if t.nb_dossier %}{{ t.nb_dossier }} par dossier{% endif %})</span>{% endif %}
       </td>
-      <td class="note">
-        {% if t.taxonomie %}taxonomie.toml
-        {% elif t.cree_par %}créé par {{ t.cree_par }}{% if t.cree_le %} le {{ t.cree_le | date }}{% endif %}
-        {% else %}ancien tag de la taxonomie{% endif %}
-      </td>
       <td class="actions-tag">
         <a class="note petit" href="/admin/journal?tag={{ t.id }}">journal</a>
-        {% if not t.taxonomie %}
         <details>
           <summary>Modifier</summary>
+          <form method="post" action="/admin/tags" class="edition-mots">
+            <input type="hidden" name="action" value="mots_cles"><input type="hidden" name="tag_id" value="{{ t.id }}">
+            <label class="petit">Mots-clés, un par ligne (<code>titre:</code> devant un mot qui ne compte que dans le nom du fichier) :
+              <textarea name="mots" rows="{{ [(t.mots_cles or []) | length + 2, 12] | min }}" cols="34" spellcheck="false">{{ (t.mots_cles or []) | join('\n') }}</textarea>
+            </label>
+            <div>
+              <button type="button" class="bouton secondaire" data-apercu>Aperçu</button>
+              <button type="submit" class="bouton secondaire">Enregistrer</button>
+            </div>
+            <div class="apercu"></div>
+          </form>
           <form method="post" action="/admin/tags">
             <input type="hidden" name="action" value="renommer"><input type="hidden" name="tag_id" value="{{ t.id }}">
             <input name="libelle" value="{{ t.libelle }}" required maxlength="60" size="16" aria-label="Libellé">
@@ -49,7 +86,7 @@ renomment ou se retirent dans ce fichier. <a href="/admin/journal">Journal des t
           </form>
           <form method="post" action="/admin/tags">
             <input type="hidden" name="action" value="fusionner"><input type="hidden" name="tag_id" value="{{ t.id }}">
-            <select name="cible" required aria-label="Tag qui le remplace">
+            <select name="cible" required aria-label="Tag qui le remplace" title="Ses documents, dossiers et mots-clés passent au tag choisi">
               <option value="">Fusionner dans…</option>
               {% for c in tags if c.id != t.id %}<option value="{{ c.id }}">{{ c.libelle }} ({{ c.categorie }})</option>{% endfor %}
             </select>
@@ -57,18 +94,59 @@ renomment ou se retirent dans ce fichier. <a href="/admin/journal">Journal des t
           </form>
           {# tojson : un libellé avec apostrophe ou guillemet ne casse ni l'attribut ni le script #}
           <form method="post" action="/admin/tags"
-                onsubmit='return confirm({{ ("Supprimer « " ~ t.libelle ~ " » et le retirer de " ~ total ~ " document(s) ?") | tojson }})'>
+                onsubmit='return confirm({{ ("Supprimer « " ~ t.libelle ~ " », ses mots-clés, et le retirer de " ~ total ~ " document(s) ?") | tojson }})'>
             <input type="hidden" name="action" value="supprimer"><input type="hidden" name="tag_id" value="{{ t.id }}">
             <button type="submit" class="bouton secondaire danger">Supprimer</button>
           </form>
         </details>
-        {% endif %}
       </td>
     </tr>
   {% endfor %}
   </tbody>
 </table>
 {% else %}
-<p class="note">Aucun tag pour l'instant : créez-en un, ou lancez l'indexation pour appliquer taxonomie.toml.</p>
+<p class="note">Aucun tag pour l'instant : créez-en un, puis donnez-lui des mots-clés.</p>
 {% endfor %}
+
+<script>
+  // Aperçu des mots-clés : calculé par le serveur, rien n'est enregistré
+  document.addEventListener('click', async (e) => {
+    const bouton = e.target.closest('[data-apercu]');
+    if (!bouton) return;
+    const zone = bouton.form.querySelector('.apercu');
+    zone.innerHTML = '<p class="note">Calcul de l\'aperçu…</p>';
+    bouton.disabled = true;
+    try {
+      const reponse = await fetch('/admin/tags/apercu', { method: 'POST', body: new URLSearchParams(new FormData(bouton.form)) });
+      zone.innerHTML = reponse.ok ? await reponse.text() : '<p class="avertissement">Aperçu impossible (' + reponse.status + ').</p>';
+    } catch {
+      zone.innerHTML = '<p class="avertissement">Serveur injoignable.</p>';
+    } finally { bouton.disabled = false; }
+  });
+
+  // Avancement du recalcul en arrière-plan
+  const boite = document.getElementById('recalcul');
+  const texte = (s) => { const span = document.createElement('span'); span.textContent = s; return span; };
+  async function suivre() {
+    let etat;
+    try { etat = await (await fetch('/admin/tags/recalcul')).json(); } catch { setTimeout(suivre, 5000); return; }
+    boite.replaceChildren();
+    if (etat.en_cours) {
+      boite.append(texte(`Recalcul de ${etat.libelle} : ${etat.fait.toLocaleString('fr-FR')} / ${etat.total ? etat.total.toLocaleString('fr-FR') : '…'} documents `));
+      const barre = document.createElement('progress');
+      barre.max = etat.total || 1; barre.value = etat.fait;
+      boite.append(barre);
+      if (etat.en_attente.length) boite.append(texte(` — ensuite : ${etat.en_attente.join(', ')}`));
+    } else if (etat.en_attente.length) {
+      boite.append(texte(`Recalcul en attente : ${etat.en_attente.join(', ')}`));
+    }
+    if (etat.en_cours || etat.en_attente.length) { setTimeout(suivre, 2000); return; }
+    const fin = texte(etat.erreur || etat.message);
+    if (etat.erreur) fin.className = 'perte';
+    const lien = document.createElement('a');
+    lien.href = '/admin/tags'; lien.textContent = ' Actualiser les nombres';
+    boite.append(fin, lien);
+  }
+  if (boite.dataset.actif) suivre();
+</script>
 {% endblock %}

@@ -2,7 +2,7 @@
 
 Statistiques calculées localement à partir de l'index, sans lire le contenu des documents :
 noms de dossiers, mots des noms de fichiers et des titres, couverture des tags actuels.
-Le rapport (Markdown) sert à compléter taxonomie.toml à la main, ou à le faire avec un
+Le rapport (Markdown) sert à compléter la taxonomie (page Tags, ou export taxonomie.toml), ou à le faire avec un
 assistant IA si la politique du groupe l'autorise : il ne contient ni texte de document, ni
 chemin complet, et seulement des termes présents dans au moins `min_docs` documents.
 """
@@ -91,7 +91,7 @@ def rapport(documents: list[Document], taxonomie: Taxonomie, comptes_tags: dict[
         "",
         f"- {total} documents, dont {tagues} avec au moins un tag ({_pourcent(tagues, total)}) "
         f"et {total - tagues} sans tag.",
-        f"- {len(taxonomie.regles)} tags définis dans taxonomie.toml.",
+        f"- {len(taxonomie.regles)} tags avec des mots-clés dans la taxonomie.",
         "",
         "## Couverture des tags actuels",
         "",
@@ -172,8 +172,9 @@ def rapport(documents: list[Document], taxonomie: Taxonomie, comptes_tags: dict[
     candidats = [(t, n) for t, n in termes + paires if not couvert(taxonomie, t)]
     candidats.sort(key=lambda c: -c[1])
     sortie += ["## Propositions à trier", "",
-               "Termes fréquents qu'aucun tag ne reconnaît. Ranger les utiles dans une catégorie de "
-               "taxonomie.toml (`[logiciel]`, `[secteur]`, `[type]`…), puis lancer `ged recalculer`.", "",
+               "Termes fréquents qu'aucun tag ne reconnaît. Ajouter les utiles comme mots-clés d'un tag "
+               "dans la page Tags, ou dans l'export taxonomie.toml (`[logiciel]`, `[secteur]`, `[type]`…) "
+               "à réimporter avec `ged importer-taxonomie`.", "",
                "```toml"]
     sortie += [f'# "{t.capitalize()}" = ["{t}"]    # {n} documents' for t, n in candidats[:LIGNES_MAX]]
     sortie += ["```", ""]

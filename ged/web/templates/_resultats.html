@@ -22,6 +22,8 @@
     <button type="button" class="bouton secondaire" data-copier="{{ d.chemin }}">Copier le chemin</button>
   </div>
   {% if d.sous_titre %}<p class="sous-titre">{{ d.sous_titre }}</p>{% endif %}
+  {# Chemin sur sa propre ligne : toute la largeur de la carte, le dossier final reste lisible #}
+  <span class="fil-chemin" title="{{ d.chemin_relatif }}">📁{% if not d.chemin_decoupe.debut %} racine{% endif %}{{ segments(d.chemin_decoupe.debut, "debut", d.source_id) }}{{ segments(d.chemin_decoupe.milieu, "milieu", d.source_id) }}{{ segments(d.chemin_decoupe.fin, "fin", d.source_id) }}</span>
   <div class="meta">
     <span class="badge pole">{{ d.pole }}</span>
     <span class="badge">{{ d.famille }}</span>
@@ -29,8 +31,6 @@
     {% for t in d.tags %}<a class="badge tag" href="/?tag={{ t.id }}" data-tag="{{ t.id }}" title="Tous les documents « {{ t.libelle }} »">{{ t.libelle }}</a>{% endfor %}
     {% if d.statut == "ocr_requis" %}<span class="badge alerte">Scan non lu (OCR en attente)</span>{% endif %}
     {% if d.statut == "sans_texte" %}<span class="badge">Image sans texte</span>{% endif %}
-    {# Chemin entre les badges et la date : il se réduit en « … » s'il manque de place #}
-    <span class="fil-chemin" title="{{ d.chemin_relatif }}">📁{% if not d.chemin_decoupe.debut %} racine{% endif %}{{ segments(d.chemin_decoupe.debut, "debut", d.source_id) }}{{ segments(d.chemin_decoupe.milieu, "milieu", d.source_id) }}{{ segments(d.chemin_decoupe.fin, "fin", d.source_id) }}</span>
     {% set role = "modificateur" if d.dernier_modificateur else "auteur" %}
     <span class="date">modifié le {{ d.modifie_le | date }}{% if d.dernier_modificateur or d.auteur %} par <a class="personne" href="{{ lien_personne(d.dernier_modificateur or d.auteur, role) }}" data-personne="{{ d.dernier_modificateur or d.auteur }}" data-role="{{ role }}" title="Documents {{ 'modifiés en dernier' if role == 'modificateur' else 'créés' }} par {{ d.dernier_modificateur or d.auteur }}">{{ d.dernier_modificateur or d.auteur }}</a>{% endif %}</span>
   </div>

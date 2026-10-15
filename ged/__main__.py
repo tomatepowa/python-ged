@@ -64,6 +64,11 @@ def main(argv: list[str] | None = None) -> None:
     p_reinit.add_argument("--oui", action="store_true", help="sans demander de confirmation")
 
     args = parser.parse_args(argv)
+    # Sortie redirigée sous Windows (cp1252) : un caractère non représentable (« − », « → ») est
+    # remplacé au lieu d'interrompre la commande
+    for flux in (sys.stdout, sys.stderr):
+        if hasattr(flux, "reconfigure"):
+            flux.reconfigure(errors="replace")
     logging.basicConfig(
         level=logging.DEBUG if args.verbeux else logging.INFO,
         format="%(asctime)s %(levelname)-7s %(message)s",

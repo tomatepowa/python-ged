@@ -26,5 +26,8 @@ desktop.ini
 # Taxonomie de démonstration sur des documents personnels
 taxonomie.demo.toml
 
+# Consignes Claude Code propres à un poste (ex. démo sur des documents personnels)
+CLAUDE.local.md
+
 # Rapport de « ged analyser » : statistiques tirées des documents, à ne pas versionner
 analyse-taxonomie.md

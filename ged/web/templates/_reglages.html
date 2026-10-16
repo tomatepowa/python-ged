@@ -1,0 +1,105 @@
+{# Champs des réglages, communs à l'assistant d'installation et à la page Réglages.
+   Contexte : v (réglages), hote, port, assistant (bool), nb_prepares. #}
+{% set ecoute = "local" if hote in ("127.0.0.1", "localhost") else "reseau" if hote == "0.0.0.0" else "autre" %}
+
+<fieldset class="reglages-section">
+  <legend>Sources à indexer</legend>
+  <p class="note petit">Les dossiers ou partages dont la GED indexe les documents, en lecture seule. Cochez
+    « Dépôt » pour les dossiers où elle peut aussi ranger les documents déposés depuis l'interface (le compte
+    de la GED doit alors avoir le droit de modification sur ce dossier). Videz une ligne pour retirer une source.</p>
+  <table class="sources-reglages">
+    <thead><tr><th>Nom</th><th>Chemin</th><th>Pôle</th><th>Dépôt</th></tr></thead>
+    <tbody id="lignes-sources">
+    {% for s in v.sources + [{}, {}] %}
+      <tr>
+        <td><input type="text" name="source_nom" value="{{ s.nom or '' }}" placeholder="GED Infra" aria-label="Nom"></td>
+        <td><input type="text" name="source_chemin" value="{{ s.chemin or '' }}" placeholder="\\nas\infra\ged" aria-label="Chemin" class="chemin-saisi"></td>
+        <td><input type="text" name="source_pole" value="{{ s.pole or '' }}" placeholder="Infra" aria-label="Pôle"></td>
+        <td class="centre"><input type="checkbox" name="source_depot" value="{{ loop.index0 }}"{% if s.depot %} checked{% endif %} aria-label="Dépôt"></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <button type="button" class="bouton secondaire petit" id="ajouter-source">＋ Ajouter une ligne</button>
+</fieldset>
+
+<fieldset class="reglages-section">
+  <legend>Indexation</legend>
+  <label>Taille maximale lue (Mo) <span class="note petit">au-delà, le fichier est référencé sans que son contenu soit lu</span>
+    <input type="number" name="taille_max_mo" value="{{ v.taille_max_mo }}" min="1" max="10000"></label>
+  <label>Dossiers à ne pas indexer <span class="note petit">un motif par ligne, sur le chemin complet, ex. <code>*\Archives\*</code> ; programmes, coffres et corbeilles sont déjà ignorés</span>
+    <textarea name="exclure_manuels" rows="3">{{ v.exclure_manuels | join("\n") }}</textarea></label>
+  <p class="note petit">{{ nb_prepares }} dossier{{ "s" if nb_prepares > 1 }} exclu{{ "s" if nb_prepares > 1 }} en plus avec <code>ged preparer</code>
+    (page qui affiche l'arborescence des sources pour décocher les dossiers sans intérêt).</p>
+</fieldset>
+
+<fieldset class="reglages-section">
+  <legend>Lecture des documents</legend>
+  <label class="case"><input type="checkbox" name="ocr_active" value="1"{% if v.ocr_active %} checked{% endif %}> OCR des PDF scannés et des images</label>
+  <label>Dossier du fichier de langue (tessdata) <span class="note petit">contient {{ v.langue_ocr }}.traineddata</span>
+    <input type="text" name="tessdata" value="{{ v.tessdata }}" class="chemin-saisi"></label>
+  <div class="reglages-ligne">
+    <label>Langue <input type="text" name="langue_ocr" value="{{ v.langue_ocr }}" size="6"></label>
+    <label>Résolution (dpi) <input type="number" name="dpi_ocr" value="{{ v.dpi_ocr }}" min="72" max="1200"></label>
+  </div>
+  <label>LibreOffice (soffice.exe) <span class="note petit">facultatif : pour lire les anciens .doc, .xls, .ppt</span>
+    <input type="text" name="soffice" value="{{ v.soffice }}" class="chemin-saisi"></label>
+</fieldset>
+
+<fieldset class="reglages-section">
+  <legend>Identification et administrateurs</legend>
+  <label class="case"><input type="checkbox" name="authentification" value="1"{% if v.authentification %} checked{% endif %}>
+    Identification par la session Windows : chacun ne voit que les documents que ses droits lui permettent d'ouvrir</label>
+  <p class="note petit">Sans identification, tout le monde voit tout et peut tout régler (démonstration, poste isolé).</p>
+  <label>Administrateurs de la GED <span class="note petit">un compte ou groupe par ligne (<code>DOMAINE\groupe</code> ou SID) : ils voient tout et règlent la GED</span>
+    <textarea name="groupes_admin" rows="3">{{ v.groupes_admin | join("\n") }}</textarea></label>
+  <div class="reglages-ligne">
+    <label>Protocole
+      <select name="protocole">
+        <option value="NTLM"{% if v.protocole == "NTLM" %} selected{% endif %}>NTLM (fonctionne partout)</option>
+        <option value="Negotiate"{% if v.protocole == "Negotiate" %} selected{% endif %}>Negotiate (Kerberos, SPN HTTP/serveur requis)</option>
+      </select></label>
+    <label>Durée des sessions (heures) <input type="number" name="duree_session_heures" value="{{ v.duree_session_heures }}" min="0.25" step="0.25"></label>
+  </div>
+</fieldset>
+
+<fieldset class="reglages-section">
+  <legend>Dépôt de documents</legend>
+  <p class="note petit">Actif dès qu'une source est cochée « Dépôt » ci-dessus.</p>
+  <label>Dossier d'attente <span class="note petit">fichiers déposés pas encore classés ; un dossier local, hors des sources</span>
+    <input type="text" name="attente_depot" value="{{ v.attente_depot }}" class="chemin-saisi"></label>
+  <label>Taille maximale d'un dépôt (Mo) <input type="number" name="taille_max_depot_mo" value="{{ v.taille_max_depot_mo }}" min="1" max="10000"></label>
+</fieldset>
+
+<fieldset class="reglages-section">
+  <legend>Interface</legend>
+  <label>Exemples dans la barre de recherche vide <span class="note petit">« Rechercher : … »</span>
+    <input type="text" name="exemples_recherche" value="{{ v.exemples_recherche }}"></label>
+  <label>Adresse d'écoute du serveur
+    <select name="ecoute" id="ecoute">
+      <option value="local"{% if ecoute == "local" %} selected{% endif %}>Ce poste seulement</option>
+      <option value="reseau"{% if ecoute == "reseau" %} selected{% endif %}>Tout le réseau (autres postes, VPN)</option>
+      <option value="autre"{% if ecoute == "autre" %} selected{% endif %}>Une adresse précise</option>
+    </select></label>
+  <div class="reglages-ligne">
+    <label id="hote-autre"{% if ecoute != "autre" %} hidden{% endif %}>Adresse <input type="text" name="hote_autre" value="{{ hote if ecoute == 'autre' else '' }}"></label>
+    <label>Port <input type="number" name="port" value="{{ port }}" min="1" max="65535"></label>
+  </div>
+  {% if not assistant %}<p class="note petit">Adresse, port, identification et administrateurs sont pris en compte au prochain démarrage du serveur.</p>{% endif %}
+</fieldset>
+
+<script>
+(() => {
+  const corps = document.getElementById('lignes-sources');
+  document.getElementById('ajouter-source').addEventListener('click', () => {
+    const ligne = corps.lastElementChild.cloneNode(true);
+    ligne.querySelectorAll('input[type=text]').forEach((champ) => { champ.value = ''; });
+    const coche = ligne.querySelector('input[type=checkbox]');
+    coche.checked = false;
+    coche.value = corps.children.length;
+    corps.append(ligne);
+  });
+  const ecoute = document.getElementById('ecoute');
+  ecoute.addEventListener('change', () => { document.getElementById('hote-autre').hidden = ecoute.value !== 'autre'; });
+})();
+</script>

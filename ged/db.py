@@ -15,7 +15,7 @@ def connecter(url: str) -> psycopg.Connection:
     try:
         return psycopg.connect(url, row_factory=dict_row, connect_timeout=DELAI_CONNEXION)
     except psycopg.OperationalError as exc:
-        raise SystemExit(f"Connexion à PostgreSQL impossible ([base] url dans config.toml) :\n{exc}") from exc
+        raise SystemExit(f"Connexion à PostgreSQL impossible (connexion.toml, ou « ged serveur --assistant ») :\n{exc}") from exc
 
 
 def initialiser(url: str, taxonomie: Path | None = None) -> None:

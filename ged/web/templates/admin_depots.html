@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block titre %}À valider – GED DSI{% endblock %}
+
+{% block contenu %}
+<h1>Dépôts à valider</h1>
+<p class="note">Classements envoyés par des personnes qui ne sont pas administratrices de la GED. Valider copie le
+  document à l'emplacement choisi, sans jamais écraser un fichier, puis l'indexe aussitôt.
+  Vos propres dépôts se classent directement depuis la page <a href="/depot">Déposer</a>.</p>
+
+{% if message %}<p class="confirmation">{{ message }}{% if document_classe %} <a href="/document/{{ document_classe }}">Voir la fiche</a>{% endif %}</p>{% endif %}
+{% if erreur %}<p class="avertissement">{{ erreur }}</p>{% endif %}
+
+{% for d in a_valider %}{% include "_classement.html" %}{% else %}
+<p class="note">Aucun dépôt à valider.</p>
+{% endfor %}
+{% if a_valider %}{% include "_outils_classement.html" %}{% endif %}
+
+{% if historique %}
+<h2>Derniers dépôts traités</h2>
+<table>
+  <thead><tr><th>Traité le</th><th>Fichier</th><th>Déposé par</th><th>Décision</th></tr></thead>
+  <tbody>
+  {% for h in historique %}
+    <tr>
+      <td class="nombre">{{ h.traite_le.astimezone().strftime("%d/%m/%Y %H:%M") }}</td>
+      <td class="chemin">{% if h.statut == "valide" and h.document_id %}<a href="/document/{{ h.document_id }}">{{ h.source }} › {{ h.chemin_relatif | replace("\\", " › ") }}</a>{% else %}{{ h.nom }}{% endif %}</td>
+      <td>{{ h.depose_par }}</td>
+      <td>{{ "Classé" if h.statut == "valide" else "Rejeté" }} par {{ h.traite_par }}{% if h.motif_rejet %} <span class="note petit">: {{ h.motif_rejet }}</span>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

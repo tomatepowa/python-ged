@@ -1,7 +1,6 @@
 import os
 from pathlib import Path
 
-from ged.config import charger
 from ged.extraits import construire_motif, extraire
 from ged.indexeur import a_quitte, parcourir
 from ged.recherche import Filtres, requete_saisie, sous_titre
@@ -83,15 +82,6 @@ def test_extrait_sans_correspondance_donne_le_debut():
     assert extraire(None, None) == ""
 
 
-def test_config_exemple_valide():
-    racine = Path(__file__).resolve().parents[1]
-    cfg = charger(racine / "config.exemple.toml")
-    assert [s.pole for s in cfg.sources] == ["Métier", "Infra"]
-    assert str(cfg.sources[0].chemin) == r"\\nas\metier\ged"
-    assert cfg.taxonomie == racine / "taxonomie.toml"
-    assert cfg.exemples_recherche == "imprimante, identitovigilance, \"message d'erreur\""
-
-
 def test_parcourir_signale_les_dossiers_inaccessibles(tmp_path):
     inaccessibles: list[Path] = []
     assert list(parcourir(tmp_path / "absent", [], inaccessibles)) == []
@@ -116,3 +106,54 @@ def test_periode_bornes_incluses_par_annee_ou_par_mois():
     assert Filtres(du="2021-03", au="2021-12").periode() == (date(2021, 3, 1), date(2022, 1, 1))
     assert Filtres(du="n'importe", au="2021-13").periode() == (None, None)
     assert "du=2020&au=2021-03" in Filtres(du="2020", au="2021-03").lien()
+
+
+def test_ctrl_c_pendant_l_ocr_n_est_pas_une_erreur_du_document(tmp_path, monkeypatch):
+    import pymupdf
+    import pytest
+
+    from ged.ocr import ocr
+
+    (tmp_path / "fra.traineddata").write_bytes(b"")
+
+    def interrompu(*args, **kwargs):
+        # Ce que MuPDF lève quand Ctrl+C arrive pendant la reconnaissance
+        raise RuntimeError("code=1: Director error: <class 'KeyboardInterrupt'>: Traceback...")
+
+    monkeypatch.setattr(pymupdf, "open", interrompu)
+    with pytest.raises(KeyboardInterrupt):
+        ocr(tmp_path / "scan.pdf", str(tmp_path))
+
+    def illisible(*args, **kwargs):
+        raise RuntimeError("fichier corrompu")
+
+    monkeypatch.setattr(pymupdf, "open", illisible)
+    assert ocr(tmp_path / "scan.pdf", str(tmp_path)).statut == "erreur"
+
+
+def test_reessayer_l_ocr_des_documents_en_erreur(tmp_path, conn, monkeypatch):
+    from ged import indexeur
+    from ged.config import Config
+    from ged.extraction import Resultat
+
+    source = conn.execute("INSERT INTO source (nom, chemin, pole) VALUES ('S', 'x', 'S') RETURNING id").fetchone()["id"]
+    for nom, statut, erreur in (("attente.pdf", "ocr_requis", None), ("echec.pdf", "erreur", "OCR : interrompu"),
+                                ("protege.pdf", "erreur", "PDF protégé par mot de passe")):
+        conn.execute(
+            "INSERT INTO document (source_id, chemin, chemin_relatif, nom, extension, famille, taille, modifie_le, "
+            "statut, erreur) VALUES (%s, %s, %s, %s, '.pdf', 'PDF', 1, now(), %s, %s)",
+            (source, rf"x\{nom}", nom, nom, statut, erreur),
+        )
+    lus = []
+
+    def faux_ocr(chemin, *args, **kwargs):
+        lus.append(chemin.name)
+        return Resultat(statut="indexe", contenu="texte lu", methode="ocr", nb_pages=1)
+
+    monkeypatch.setattr(indexeur, "ocr", faux_ocr)
+    cfg = Config(url_base="", sources=[], tessdata=str(tmp_path))
+    indexeur.Indexeur(cfg, conn).ocr()
+    assert lus == ["attente.pdf"]
+    indexeur.Indexeur(cfg, conn).ocr(reessayer=True)
+    # Seule l'erreur d'OCR est relancée, pas le PDF protégé (illisible quoi qu'il arrive)
+    assert lus == ["attente.pdf", "echec.pdf"]

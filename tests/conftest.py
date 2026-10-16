@@ -53,7 +53,7 @@ def conn():
         try:
             connexion.execute(files("ged").joinpath("schema.sql").read_text(encoding="utf-8"))
             connexion.execute("TRUNCATE document_tag, tag_retire, tag_dossier, journal_tag, document, tag, "
-                              "vocabulaire, source, reglage RESTART IDENTITY CASCADE")
+                              "vocabulaire, source, reglage, depot, parametre RESTART IDENTITY CASCADE")
             yield connexion
         finally:
             connexion.rollback()

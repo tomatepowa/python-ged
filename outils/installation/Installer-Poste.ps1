@@ -11,16 +11,19 @@
       2. Python + dépendances du projet .... téléchargés par uv (dossier .venv du projet)
       3. PostgreSQL (version zip) .......... <Dossier>\postgresql\pgsql, données dans <Dossier>\postgresql\donnees
       4. Fichier de langue OCR français .... <Dossier>\tessdata\fra.traineddata
-      5. Base "ged" créée, config.toml du projet généré (mot de passe aléatoire), schéma initialisé
+      5. Base "ged" créée, connexion.toml du projet généré (mot de passe aléatoire), schéma initialisé
+
+    Les réglages (partages, OCR, identification...) se font ensuite dans l'assistant d'installation,
+    au premier démarrage de l'interface (GED-Poste.ps1 demarrer).
 
     Le script peut être relancé sans risque : chaque étape déjà faite est sautée.
     PostgreSQL n'est pas installé comme service Windows (il faudrait des droits admin) :
     le démarrer avec GED-Poste.ps1 après un redémarrage du PC.
 
 .PARAMETER Source
-    Partage(s) à indexer, au format "Nom|Chemin|Pôle". Répétable.
+    Partage(s) à indexer, au format "Nom|Chemin|Pôle". Répétable. Leur accès est vérifié, et ils
+    sont rappelés à la fin, à saisir dans l'assistant d'installation.
     Ex : -Source 'GED Infra|\\nas\infra\ged|Infra', 'GED Métier|\\nas\metier\ged|Métier'
-    Sans ce paramètre, config.toml contient des exemples à compléter.
 
 .PARAMETER Dossier
     Dossier d'installation. Défaut : %LOCALAPPDATA%\ged
@@ -62,7 +65,7 @@ $binPostgres = Join-Path $dossierPostgres 'pgsql\bin'
 $donneesPostgres = Join-Path $dossierPostgres 'donnees'
 $dossierTessdata = Join-Path $Dossier 'tessdata'
 $uv = Join-Path $dossierOutils 'uv\uv.exe'
-$configuration = Join-Path $projet 'config.toml'
+$configuration = Join-Path $projet 'connexion.toml'
 # Versions fournies avec Windows, appelées par leur chemin complet : un autre tar.exe dans le PATH
 # (celui de Git, par exemple) ne comprend pas les chemins C:\ et ferait échouer la décompression
 $tar = Join-Path $env:SystemRoot 'System32\tar.exe'
@@ -124,12 +127,6 @@ function Test-PortLibre([int]$NumeroPort) {
     }
     catch { return $false }
     finally { if ($ecoute) { $ecoute.Stop() } }
-}
-
-# Chaîne TOML entre apostrophes : aucun échappement (chemins Windows tels quels)
-function ConvertTo-TomlLitteral([string]$texte) {
-    if ($texte.Contains("'")) { throw "Apostrophe interdite dans : $texte" }
-    "'$texte'"
 }
 
 # ============================================================================
@@ -205,7 +202,7 @@ else {
 $initialisation = -not (Test-Path (Join-Path $donneesPostgres 'PG_VERSION'))
 if ($initialisation) {
     if (Test-Path $configuration) {
-        throw "config.toml existe déjà mais la base n'est pas initialisée : renommez config.toml puis relancez."
+        throw "connexion.toml existe déjà mais la base n'est pas initialisée : renommez connexion.toml puis relancez."
     }
     if (-not (Test-PortLibre $Port)) {
         throw "Le port $Port est déjà utilisé (autre PostgreSQL ?). Relancez avec -Port 5433 par exemple."
@@ -264,15 +261,13 @@ Get-Fichier "https://github.com/tesseract-ocr/$modele/raw/main/fra.traineddata" 
 # 5. Configuration et schéma
 # ============================================================================
 
-Write-Etape '5/5 Configuration et schéma de la base'
+Write-Etape '5/5 Connexion et schéma de la base'
 if ($initialisation) {
-    $soffice = @(
-        (Join-Path $env:ProgramFiles 'LibreOffice\program\soffice.exe'),
-        (Join-Path $env:LOCALAPPDATA 'Programs\LibreOffice\program\soffice.exe')
-    ) | Where-Object { Test-Path $_ } | Select-Object -First 1
-
+    # Seule la connexion à la base est dans un fichier : tous les autres réglages se font dans
+    # l'assistant d'installation, au premier démarrage de l'interface
     $lignes = @(
-        "# Configuration générée par Installer-Poste.ps1 le $(Get-Date -Format 'dd/MM/yyyy HH:mm') - non versionnée",
+        "# Connexion de la GED à sa base, générée par Installer-Poste.ps1 le $(Get-Date -Format 'dd/MM/yyyy HH:mm')",
+        '# Non versionné : contient le mot de passe de la base.',
         '',
         '[base]',
         "url = `"postgresql://ged:$motDePasse@localhost:$Port/ged`"",
@@ -280,43 +275,14 @@ if ($initialisation) {
         '[serveur]',
         'hote = "127.0.0.1"',
         'port = 8000',
-        '',
-        '[indexation]',
-        'taille_max_mo = 100',
-        'exclure = []',
-        '',
-        '[ocr]',
-        'active = true',
-        "tessdata = $(ConvertTo-TomlLitteral $dossierTessdata)",
-        'langue = "fra"',
-        'dpi = 300',
-        '',
-        '[interface]',
-        '# Exemples affichés dans la barre de recherche vide',
-        'exemples_recherche = "imprimante, identitovigilance, \"message d''erreur\""',
         ''
     )
-    if ($soffice) {
-        $lignes += '[conversion]', "soffice = $(ConvertTo-TomlLitteral $soffice)", ''
-    }
-    else {
-        $lignes += '# LibreOffice introuvable : les anciens .doc / .xls / .ppt ne seront pas lus.', '# [conversion]', "# soffice = 'C:\chemin\vers\soffice.exe'", ''
-    }
-    if ($sourcesAnalysees) {
-        foreach ($s in $sourcesAnalysees) {
-            $lignes += '[[sources]]', "nom = `"$($s.Nom)`"", "chemin = $(ConvertTo-TomlLitteral $s.Chemin)", "pole = `"$($s.Pole)`"", ''
-        }
-    }
-    else {
-        $lignes += '# Partages à indexer : décommenter et adapter (une section par partage)',
-            '# [[sources]]', '# nom = "GED Infra"', "# chemin = '\\nas\infra\ged'", '# pole = "Infra"', ''
-    }
     # UTF-8 sans BOM : attendu par le lecteur TOML de Python
     [System.IO.File]::WriteAllLines($configuration, [string[]]$lignes, (New-Object System.Text.UTF8Encoding($false)))
-    Write-Info "config.toml généré : $configuration"
+    Write-Info "connexion.toml généré : $configuration"
 }
 else {
-    Write-Info 'config.toml conservé (base déjà initialisée).'
+    Write-Info 'connexion.toml conservé (base déjà initialisée).'
 }
 
 Push-Location $projet
@@ -332,11 +298,13 @@ Write-Host ''
 Write-Host 'Installation terminée.' -ForegroundColor Green
 Write-Host ''
 Write-Host '  Ensuite :'
-if (-not $sourcesAnalysees) {
-    Write-Host "    0. Déclarer les partages à indexer dans $configuration"
+Write-Host "    1. Interface    : powershell -ExecutionPolicy Bypass -File `"$commandes`" demarrer   puis http://localhost:8000"
+Write-Host "       L'assistant d'installation demande le code affiché dans la console, puis les réglages."
+if ($sourcesAnalysees) {
+    Write-Host '       Partages à y saisir :'
+    foreach ($s in $sourcesAnalysees) { Write-Host "         $($s.Nom) : $($s.Chemin) (pôle $($s.Pole))" }
 }
-Write-Host "    1. Indexer      : powershell -ExecutionPolicy Bypass -File `"$commandes`" indexer"
-Write-Host "    2. OCR (scans)  : powershell -ExecutionPolicy Bypass -File `"$commandes`" ocr"
-Write-Host "    3. Interface    : powershell -ExecutionPolicy Bypass -File `"$commandes`" demarrer   puis http://localhost:8000"
+Write-Host "    2. Indexer      : powershell -ExecutionPolicy Bypass -File `"$commandes`" indexer"
+Write-Host "    3. OCR (scans)  : powershell -ExecutionPolicy Bypass -File `"$commandes`" ocr"
 Write-Host ''
 Write-Host "  Après un redémarrage du PC, PostgreSQL ne se relance pas tout seul : `"$commandes`" demarrer s'en charge."

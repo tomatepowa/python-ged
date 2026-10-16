@@ -4,19 +4,17 @@ Le parcours ne lit que les noms, tailles et dates (aucun fichier n'est ouvert) :
 même sur un gros partage. Il applique les mêmes règles que l'indexeur (dossiers système, programmes,
 fichiers sensibles), si bien que les nombres affichés sont ceux que l'indexation traitera.
 
-Les dossiers décochés sont écrits dans exclusions.toml, lu par config.py en plus de config.toml.
+Les dossiers décochés sont enregistrés dans les réglages (exclure_prepares, voir ged.parametres).
 """
 
 from __future__ import annotations
 
 import glob
-import json
 import logging
 import os
 import re
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 
 from ged.config import Config
@@ -177,26 +175,13 @@ def exclusions_minimales(decoches: list[Path]) -> list[Path]:
     return sorted(gardes, key=lambda c: str(c).lower())
 
 
-def ecrire_exclusions(fichier: Path, dossiers: list[Dossier], conserves: list[str] = ()) -> None:
-    """Écrit exclusions.toml : un motif par dossier, avec son nombre de fichiers en commentaire.
+def motifs_exclusions(dossiers: list[Dossier], conserves: list[str] = ()) -> list[str]:
+    """Motifs enregistrés dans les réglages : un par dossier exclu.
 
-    `conserves` : motifs de l'ancien fichier qui ne visent aucun dossier parcouru (source retirée,
+    `conserves` : motifs précédents qui ne visent aucun dossier parcouru (source retirée,
     dossier inaccessible ce jour-là...) : gardés tels quels plutôt que perdus.
     """
-    lignes = [
-        "# Dossiers exclus de l'indexation, choisis avec « ged preparer ».",
-        "# Ce fichier est réécrit à chaque validation : une exclusion écrite à la main va plutôt dans",
-        "# config.toml, [indexation] exclure.",
-        f"# Mis à jour le {datetime.now():%d/%m/%Y à %H:%M}.",
-        "",
-        "exclure = [",
-    ]
-    for d in dossiers:
-        lignes.append(f"    {json.dumps(motif_exact(d.chemin), ensure_ascii=False)},  # {d.fichiers} fichiers")
-    for motif in conserves:
-        lignes.append(f"    {json.dumps(motif, ensure_ascii=False)},  # conservé (aucun dossier parcouru)")
-    lignes.append("]")
-    fichier.write_text("\n".join(lignes) + "\n", encoding="utf-8")
+    return [motif_exact(d.chemin) for d in dossiers] + list(conserves)
 
 
 def motifs_orphelins(motifs: list[str], sources: list[tuple[str, Dossier]]) -> list[str]:

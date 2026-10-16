@@ -10,10 +10,11 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from ged.config import Config, Source, charger, lire_exclusions
+from ged import parametres
+from ged.config import Config, Connexion, Source
 from ged.indexeur import dossier_exclu, parcourir
 from ged.preparation import (
-    alertes, ecrire_exclusions, exclusions_minimales, motif_exact, motifs_orphelins, parcourir_rapide,
+    alertes, exclusions_minimales, motif_exact, motifs_exclusions, motifs_orphelins, parcourir_rapide,
     parcourir_sources,
 )
 from ged.verification import ATTENTION, ERREUR, OK, verifier_exclusions, verifier_sources
@@ -76,29 +77,18 @@ def test_motif_exact_vise_seulement_ce_dossier(partage):
     assert not dossier_exclu(partage / "Applis" / "Logiciel v", [motif])
 
 
-def test_fichier_d_exclusions_relu_par_la_configuration(partage, tmp_path):
+def test_exclusions_reprises_par_la_configuration(partage):
     arbre = parcourir_rapide(partage)
     noms = {d.nom: d for d in arbre.tous()}
-    fichier = tmp_path / "exclusions.toml"
-    ecrire_exclusions(fichier, [noms["Logiciel [v2]"]], conserves=["\\\\ancien\\partage\\d'Antoine"])
-    motifs = lire_exclusions(fichier)
+    motifs = motifs_exclusions([noms["Logiciel [v2]"]], conserves=["\\\\ancien\\partage\\d'Antoine"])
     assert motifs == [motif_exact(noms["Logiciel [v2]"].chemin), "\\\\ancien\\partage\\d'Antoine"]
     # L'indexeur ne parcourt plus le dossier exclu
     assert {p.name for p in parcourir(partage, motifs)} == {"a.docx", "b.pdf", "c.txt"}
 
-    (tmp_path / "config.toml").write_text(
-        '[base]\nurl = "postgresql://x"\n[indexation]\nexclure = ["*\\\\Archives\\\\*"]\n', encoding="utf-8"
-    )
-    cfg = charger(tmp_path / "config.toml")
-    assert cfg.exclure_config == ["*\\Archives\\*"]
+    valeurs = {**parametres.DEFAUTS, "exclure_manuels": ["*\\Archives\\*"], "exclure_prepares": motifs}
+    cfg = parametres.config(Connexion("postgresql://x"), valeurs)
+    assert cfg.exclure_manuels == ["*\\Archives\\*"]
     assert cfg.exclure == ["*\\Archives\\*", *motifs]
-
-
-def test_fichier_d_exclusions_invalide(tmp_path):
-    fichier = tmp_path / "exclusions.toml"
-    fichier.write_text("exclure = [1, 2]\n")
-    with pytest.raises(SystemExit, match="liste de chemins"):
-        lire_exclusions(fichier)
 
 
 def test_motifs_orphelins(partage):
@@ -127,26 +117,27 @@ def test_niveau_de_couleur():
 def preparation(partage, tmp_path):
     cfg = Config(
         url_base="", sources=[Source("Partage", partage, "P")],
-        exclure=["*\\Notes\\Réseau"], exclure_config=["*\\Notes\\Réseau"],
-        fichier_exclusions=tmp_path / "exclusions.toml",
+        exclure=["*\\Notes\\Réseau"], exclure_manuels=["*\\Notes\\Réseau"],
     )
     sources = parcourir_sources(cfg)
-    return cfg, sources, TestClient(creer_app_preparation(cfg, sources))
+    # Les motifs enregistrés dans les réglages, à chaque validation
+    enregistres: list[list[str]] = []
+    return cfg, sources, TestClient(creer_app_preparation(cfg, sources, enregistres.append)), enregistres
 
 
 def test_page_de_preparation(preparation):
-    _, sources, client = preparation
+    _, sources, client, _ = preparation
     page = client.get("/")
     assert page.status_code == 200
     assert "Logiciel [v2]" in page.text and "#recycle" not in page.text
-    # Dossier exclu par config.toml : décoché, et verrouillé
+    # Dossier exclu dans la page Réglages : décoché, et verrouillé
     reseau = next(d for d in sources[0][1].tous() if d.nom == "Réseau")
     case = re.search(rf'<input[^>]*value="{reseau.id}"[^>]*>', page.text).group(0)
     assert "checked" not in case and "disabled" in case
 
 
 def test_validation_ecrit_les_exclusions(preparation):
-    cfg, sources, client = preparation
+    _, sources, client, enregistres = preparation
     page = client.get("/").text
     jeton = re.search(r'name="jeton" value="([^"]+)"', page).group(1)
     noms = {d.nom: d for d in sources[0][1].tous()}
@@ -155,9 +146,9 @@ def test_validation_ecrit_les_exclusions(preparation):
     corps = "&".join([f"jeton={jeton}", *(f"garder={i}" for i in gardes)])
     reponse = client.post("/valider", content=corps, headers={"Content-Type": "application/x-www-form-urlencoded"})
     assert reponse.status_code == 200
-    # Seul le dossier le plus haut est écrit ; Réseau reste dans config.toml
-    assert lire_exclusions(cfg.fichier_exclusions) == [motif_exact(noms["Applis"].chemin)]
-    # Applis (1 fichier compté : le programme ne l'est pas) et Réseau (1, exclu par config.toml) écartés
+    # Seul le dossier le plus haut est enregistré ; Réseau reste dans les motifs de la page Réglages
+    assert enregistres == [[motif_exact(noms["Applis"].chemin)]]
+    # Applis (1 fichier compté : le programme ne l'est pas) et Réseau (1, exclu dans les Réglages) écartés
     assert "<strong>2 fichiers à indexer</strong> sur 4" in reponse.text
     # La page affiche ensuite le nouvel état
     applis = re.search(rf'<input[^>]*value="{noms["Applis"].id}"[^>]*>', client.get("/").text).group(0)
@@ -165,10 +156,10 @@ def test_validation_ecrit_les_exclusions(preparation):
 
 
 def test_validation_refusee_sans_jeton(preparation):
-    cfg, _, client = preparation
+    _, _, client, enregistres = preparation
     reponse = client.post("/valider", content="garder=1", headers={"Content-Type": "application/x-www-form-urlencoded"})
     assert reponse.status_code == 403
-    assert not cfg.fichier_exclusions.exists()
+    assert enregistres == []
 
 
 def test_verifier_sources(partage, tmp_path):
@@ -181,11 +172,9 @@ def test_verifier_sources(partage, tmp_path):
     assert ("Sources", ATTENTION) in statuts  # Notes est dans Partage
 
 
-def test_verifier_exclusions(tmp_path):
-    cfg = Config(url_base="", sources=[], fichier_exclusions=tmp_path / "exclusions.toml")
-    assert verifier_exclusions(cfg).statut == ATTENTION
-    (tmp_path / "exclusions.toml").write_text("exclure = []\n")
-    assert verifier_exclusions(cfg).statut == OK
+def test_verifier_exclusions():
+    assert verifier_exclusions(Config(url_base="", sources=[])).statut == ATTENTION
+    assert verifier_exclusions(Config(url_base="", sources=[], exclure_prepares=["x"])).statut == OK
 
 
 @pytest.mark.skipif(os.name != "nt", reason="chemins Windows")
@@ -198,8 +187,8 @@ def test_alerte_du_parent_non_repetee(partage, tmp_path):
     vieux = time.time() - 9 * 365.25 * 24 * 3600
     for fichier in (partage / "Notes").rglob("*"):
         os.utime(fichier, (vieux, vieux))
-    cfg = Config(url_base="", sources=[Source("P", partage, "P")], fichier_exclusions=tmp_path / "e.toml")
-    page = TestClient(creer_app_preparation(cfg, parcourir_sources(cfg))).get("/").text
+    cfg = Config(url_base="", sources=[Source("P", partage, "P")])
+    page = TestClient(creer_app_preparation(cfg, parcourir_sources(cfg), lambda motifs: None)).get("/").text
     # Notes et son sous-dossier Réseau sont anciens : l'alerte n'apparaît qu'une fois, sur Notes
     assert page.count("rien de modifié depuis 9 ans") == 1
     # La racine de la source n'a pas de case à cocher

@@ -5,7 +5,7 @@
 <li class="dossier-prep{% if not v.coche %} exclu{% endif %}" data-fichiers="{{ d.fichiers }}">
   <div class="ligne-prep">
     {% if d.enfants %}<button type="button" class="plier" aria-expanded="{{ 'true' if profondeur == 0 else 'false' }}" title="Afficher ou masquer les sous-dossiers">{{ "▾" if profondeur == 0 else "▸" }}</button>{% else %}<span class="plier"></span>{% endif %}
-    {# La racine d'une source n'a pas de case : une source se retire dans config.toml #}
+    {# La racine d'une source n'a pas de case : une source se retire dans la page Réglages #}
     {% if profondeur == 0 %}<span class="nom-prep racine-prep">{{ d.nom }}</span>{% else %}
     <label>
       <input type="checkbox" name="garder" value="{{ d.id }}"{% if v.coche %} checked{% endif %}{% if v.verrouille %} disabled{% endif %}>
@@ -13,7 +13,7 @@
     </label>{% endif %}
     <span class="compteur niveau-{{ 0 if profondeur == 0 else v.niveau }}" title="Fichiers que l'indexation lira, sous-dossiers compris">{{ d.fichiers | nombre }} fichier{{ "s" if d.fichiers > 1 }}{% if d.sous_dossiers %} · {{ d.sous_dossiers | nombre }} dossier{{ "s" if d.sous_dossiers > 1 }}{% endif %}</span>
     <span class="details-prep">{{ d.taille | taille }}{% if v.annee %} · récent : {{ v.annee }}{% endif %}</span>
-    {% if v.verrouille %}<span class="badge">exclu dans config.toml</span>{% endif %}
+    {% if v.verrouille %}<span class="badge">exclu dans les Réglages</span>{% endif %}
     {% if d.inaccessible %}<span class="badge erreur" title="Le compte qui lance la GED ne peut pas lister ce dossier (ou un de ses sous-dossiers)">inaccessible</span>{% endif %}
     {% for a in v.alertes %}<span class="badge alerte">{{ a }}</span>{% endfor %}
   </div>
@@ -28,7 +28,7 @@
 {% block contenu %}
 <h1>Dossiers à indexer</h1>
 <p>Tout est coché : <strong>décochez les dossiers à ne pas indexer</strong> (applications, sauvegardes,
-archives sans intérêt…), puis validez. Les choix sont écrits dans <code>{{ fichier.name }}</code> ; rien
+archives sans intérêt…), puis validez. Les choix sont enregistrés dans les réglages de la GED ; rien
 n'est indexé ici, et aucun fichier des partages n'est ouvert.</p>
 <p class="legende-prep">
   Poids dans la source :

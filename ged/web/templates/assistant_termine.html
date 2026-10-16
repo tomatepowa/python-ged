@@ -1,0 +1,25 @@
+{% extends "base_assistant.html" %}
+{% block contenu %}
+<h1>Installation terminée</h1>
+<p class="etapes">1. Base de données › 2. Réglages › <strong>3. Terminé</strong></p>
+<p class="confirmation">Réglages enregistrés. La GED démarre : cette page vous y emmène dès qu'elle répond.</p>
+{% for a in avertissements %}<p class="avertissement petit">{{ a }}</p>{% endfor %}
+<p>Connexion à la base enregistrée dans <code class="chemin">{{ fichier }}</code> (contient le mot de passe : à ne pas partager).</p>
+<p>Ensuite :</p>
+<ol>
+  <li>Facultatif : <code>ged preparer</code> pour décocher les dossiers sans intérêt avant d'indexer.</li>
+  <li><code>ged indexer</code> pour indexer les sources, puis <code>ged ocr</code> pour les scans.</li>
+  <li>En production : une tâche planifiée la nuit pour <code>ged indexer</code> et <code>ged ocr</code>, et <code>ged serveur</code> en service Windows.</li>
+</ol>
+<p><a class="bouton" id="ouvrir" href="http://localhost:{{ port }}/">Ouvrir la GED</a> <span class="note petit" id="attente">démarrage…</span></p>
+<script>
+// Le serveur de la GED prend la place de l'assistant : on guette sa réponse (même un refus
+// d'identification veut dire qu'il est là), puis on y va
+const adresse = document.getElementById('ouvrir').href;
+setTimeout(function guetter() {
+  fetch(adresse, { cache: 'no-store' })
+    .then(() => { window.location = adresse; })
+    .catch(() => setTimeout(guetter, 1000));
+}, 2500);
+</script>
+{% endblock %}

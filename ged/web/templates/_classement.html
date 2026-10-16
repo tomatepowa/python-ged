@@ -1,0 +1,81 @@
+{# Formulaire de classement d'un dépôt `d` (pages Déposer et À classer) #}
+<section class="fiche depot-a-classer" id="depot-{{ d.id }}">
+  <div class="entete-resultat">
+    <h2><a href="/depot/{{ d.id }}/fichier" target="_blank">{{ d.nom }}</a></h2>
+    <span class="note petit">{{ d.taille | taille }} · déposé {% if d.envoye_le %}par {{ d.depose_par }} {% endif %}le {{ d.depose_le.astimezone().strftime("%d/%m/%Y à %H:%M") }}</span>
+  </div>
+  {% if d.commentaire %}<p class="commentaire">« {{ d.commentaire }} »</p>{% endif %}
+  {% for c in d.copies %}
+    <p class="avertissement petit">Déjà indexé à l'identique : <a href="/document/{{ c.id }}">{{ c.source }} › {{ c.chemin_relatif }}</a></p>
+  {% endfor %}
+  {% if d.statut_texte == "ocr_requis" %}
+    <p class="avertissement petit">Scan non lu (OCR désactivé) : emplacement et tags à choisir à la main.</p>
+  {% elif d.statut_texte in ("erreur", "non_supporte") %}
+    <p class="avertissement petit">Texte non lu{% if d.erreur %} : {{ d.erreur }}{% endif %} : emplacement et tags à choisir à la main.</p>
+  {% elif d.debut %}
+    <details><summary class="petit">Début du texte{% if d.methode == "ocr" %} (OCR){% endif %} · {{ d.longueur }} caractères</summary>
+      <p class="contenu petit">{{ d.debut }}…</p></details>
+  {% endif %}
+
+  <form method="post" action="/depot/{{ d.id }}/classer" class="classement">
+    <input type="hidden" name="retour" value="{{ retour }}">
+    <label>Nom du fichier
+      <input type="text" name="nom" value="{{ d.nom_choisi }}" required maxlength="150">
+    </label>
+
+    <fieldset class="emplacements">
+      <legend>Emplacement</legend>
+      {% for o in d.options %}
+        <label class="case emplacement">
+          <input type="radio" name="emplacement" value="{{ loop.index0 }}"{% if loop.first %} checked{% endif %}>
+          <span>
+            <strong>{{ o.source }}</strong>{% for partie in o.dossier.split("\\") if partie %} › {{ partie }}{% endfor %}
+            {% if o.choix %}<span class="badge alerte">choix de {{ d.depose_par }}</span>{% endif %}
+            {% if o.exemples %}<span class="note petit">· à côté de {{ o.exemples | join(", ") }}</span>{% endif %}
+          </span>
+        </label>
+      {% endfor %}
+      <label class="case emplacement">
+        <input type="radio" name="emplacement" value="autre"{% if not d.options %} checked{% endif %}>
+        <span>{{ "Ailleurs :" if d.options else "Choisir :" }}</span>
+      </label>
+      <div class="autre-emplacement">
+        <select name="source" aria-label="Source">
+          {% for s in sources_depot %}<option value="{{ s.nom }}" data-liste="dossiers-{{ loop.index0 }}">{{ s.nom }}</option>{% endfor %}
+        </select>
+        <input type="text" name="dossier" list="dossiers-0" placeholder="Dossier (vide : racine ; un nouveau dossier est créé)" aria-label="Dossier">
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Tags</legend>
+      {% for id in d.tags_proposes if id in libelles %}
+        <label class="case"><input type="checkbox" name="tag" value="{{ id }}"{% if id in d.tags_choisis %} checked{% endif %}>
+          <span class="badge tag">{{ libelles[id].libelle }}</span> <span class="note petit">{{ libelles[id].categorie }} · proposé</span></label>
+      {% else %}
+        <p class="note petit">Aucun tag proposé par la taxonomie.</p>
+      {% endfor %}
+      {% set ajoutes = d.tags_choisis | reject("in", d.tags_proposes) | list %}
+      <details{% if ajoutes %} open{% endif %}>
+        <summary class="petit">Autres tags</summary>
+        {% for t in tags if t.id not in d.tags_proposes %}
+          <label class="case"><input type="checkbox" name="tag" value="{{ t.id }}"{% if t.id in ajoutes %} checked{% endif %}> {{ t.libelle }} <span class="note petit">{{ t.categorie }}</span></label>
+        {% endfor %}
+      </details>
+    </fieldset>
+
+    <div class="actions">
+      <button type="submit" class="bouton">{{ "Classer" if request.state.lecteur.admin else "Envoyer pour validation" }}</button>
+    </div>
+  </form>
+  <form method="post" action="/depot/{{ d.id }}/retirer" class="actions rejet"
+        onsubmit='return confirm({{ ("Retirer « " ~ d.nom ~ " » ? Le fichier déposé sera supprimé.") | tojson }})'>
+    <input type="hidden" name="retour" value="{{ retour }}">
+    {% if d.envoye_le and request.state.lecteur.admin %}
+      <input type="text" name="motif" placeholder="Motif du rejet (facultatif)" maxlength="1000" class="motif">
+      <button type="submit" class="bouton secondaire">Rejeter</button>
+    {% else %}
+      <button type="submit" class="bouton secondaire petit">Retirer ce dépôt</button>
+    {% endif %}
+  </form>
+</section>

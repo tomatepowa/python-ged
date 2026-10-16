@@ -6,29 +6,17 @@ Jeu de documents **fictifs** (notes techniques, procédures, noms et logiciels m
    ```powershell
    uv run python outils/demo/generer_demo.py C:\GED-demo\fichiers
    ```
-2. Créer une base dédiée (par exemple `ged_demo`) et un fichier de configuration à part, avec deux sources :
-   ```toml
-   [base]
-   url = "postgresql://ged:mot-de-passe@localhost:5432/ged_demo"
-
-   [authentification]
-   active = false    # captures : Chrome piloté ne s'identifie pas avec la session Windows
-
-   [[sources]]
-   nom = "GED Infra"
-   chemin = 'C:\GED-demo\fichiers\GED Infra'
-   pole = "Infra"
-
-   [[sources]]
-   nom = "GED Métier"
-   chemin = 'C:\GED-demo\fichiers\GED Métier'
-   pole = "Métier"
-   ```
-3. Indexer puis lancer le serveur :
+2. Créer une base dédiée (par exemple `ged_demo`), puis lancer le serveur avec un fichier de connexion à part :
    ```powershell
-   uv run ged -c config.demo.toml init-db
-   uv run ged -c config.demo.toml indexer
-   uv run ged -c config.demo.toml serveur
+   $env:GED_CONNEXION = 'connexion.demo.toml'
+   uv run ged serveur
+   ```
+   L'assistant d'installation s'ouvre (code affiché dans la console) : base `ged_demo`, puis deux sources,
+   `GED Infra` (`C:\GED-demo\fichiers\GED Infra`, pôle Infra) et `GED Métier` (`C:\GED-demo\fichiers\GED Métier`,
+   pôle Métier), et l'identification décochée (captures : Chrome piloté ne s'identifie pas avec la session Windows).
+3. Indexer (dans une autre console, avec la même variable `GED_CONNEXION`) :
+   ```powershell
+   uv run ged indexer
    ```
 4. Prendre les captures (pilote le Chrome installé) :
    ```powershell

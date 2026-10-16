@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block titre %}Réglages – GED DSI{% endblock %}
+
+{% block contenu %}
+<div class="titre-reglages">
+  <h1>Réglages</h1>
+  <a class="bouton secondaire" href="/admin/commandes" title="Commandes à lancer sur le serveur : indexation, OCR, vérification...">? Commandes du serveur</a>
+</div>
+<p class="note">Tous les réglages de la GED. La connexion à la base reste dans <code>connexion.toml</code> sur le
+  serveur ; pour la changer, ou pour corriger des administrateurs mal saisis qui ne peuvent plus ouvrir cette page :
+  <code>ged serveur --assistant</code> depuis le serveur.</p>
+
+{% if message %}<p class="confirmation">{{ message }}</p>{% endif %}
+{% for a in avertissements %}<p class="avertissement petit">{{ a }}</p>{% endfor %}
+{% for e in erreurs %}<p class="avertissement">{{ e }}</p>{% endfor %}
+
+<form method="post" action="/admin/reglages" class="formulaire-reglages">
+  {% include "_reglages.html" %}
+  <button type="submit" class="bouton">Enregistrer</button>
+</form>
+{% endblock %}

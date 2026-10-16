@@ -1,0 +1,17 @@
+{# Une fois par page avec des formulaires de classement : dossiers connus de chaque source, et
+   choix d'un autre emplacement (la liste des dossiers suit la source choisie) #}
+{% for s in sources_depot %}
+<datalist id="dossiers-{{ loop.index0 }}">
+  {% for dossier in dossiers.get(s.nom, []) %}<option value="{{ dossier }}">{% endfor %}
+</datalist>
+{% endfor %}
+<script>
+document.querySelectorAll('.autre-emplacement').forEach((bloc) => {
+  const choix = bloc.closest('fieldset').querySelector('input[name=emplacement][value=autre]');
+  const source = bloc.querySelector('select');
+  const dossier = bloc.querySelector('input');
+  // Toucher aux champs « ailleurs » choisit cet emplacement
+  [source, dossier].forEach((champ) => champ.addEventListener('focus', () => { choix.checked = true; }));
+  source.addEventListener('change', () => dossier.setAttribute('list', source.selectedOptions[0].dataset.liste));
+});
+</script>

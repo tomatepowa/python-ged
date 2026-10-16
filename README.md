@@ -4,7 +4,7 @@
 
 GED DSI indexe **en lecture seule** les dossiers documentaires existants (partages du NAS), en extrait le texte (Word, PDF, Excel, PowerPoint, mails, scans via OCR) et propose une recherche web avec filtres par pôle, type de document, tags, date et personne. Chacun n'y voit que les documents que ses droits Windows lui permettent d'ouvrir.
 
-Les fichiers ne sont **ni déplacés, ni modifiés** : l'arborescence actuelle reste la référence, la GED se pose par-dessus.
+Les fichiers ne sont **ni déplacés, ni modifiés** : l'arborescence actuelle reste la référence, la GED se pose par-dessus. Seuls les nouveaux documents déposés depuis l'interface sont copiés par la GED, dans les dossiers ouverts au dépôt.
 
 ## Aperçu
 
@@ -68,6 +68,10 @@ Les fichiers ne sont **ni déplacés, ni modifiés** : l'arborescence actuelle r
 - **Identification par la session Windows**, sans mot de passe à saisir, et **filtrage selon les droits NTFS** partout : résultats, suggestions, compteurs, fiches, fichiers. Voir [Droits d'accès et identification](#droits-daccès-et-identification).
 - **Page « Mes groupes »** (clic sur son nom) : ses documents (créés, modifiés, possédés) et ses groupes Windows, en arbre quand l'Active Directory répond. La fiche d'un document dit quels groupes en donnent l'accès.
 
+**Dépôt**
+- **Déposer et classer d'un même geste** : on glisse un ou plusieurs fichiers ; la GED en lit le texte (OCR compris), propose des emplacements (dossiers des documents semblables) et des tags, et signale les copies déjà indexées. Un clic, et le document est classé et trouvable.
+- **Validation** par un administrateur pour les autres personnes (page « À valider »). Voir [Dépôt de documents](#dépôt-de-documents).
+
 **Indexation**
 - **Incrémentale** : seuls les fichiers nouveaux ou modifiés sont relus, les droits sont relus à chaque passage. Un fichier renommé ou déplacé est reconnu à son empreinte et garde sa fiche, son OCR et ses tags.
 - **Jamais indexés** : coffres KeePass, clés et certificats (`.kdbx`, `.pfx`, `.pem`…), programmes (`.exe`, `.dll`, `.msi`…), corbeilles et instantanés du NAS, dossiers listés dans `exclure`.
@@ -116,7 +120,7 @@ Le compte qui indexe doit pouvoir **lire** les partages (idéalement un compte d
 
 ### Poste de test, sans droits administrateur
 
-Un script installe tout (uv, Python, PostgreSQL en version zip, fichier de langue OCR) dans `%LOCALAPPDATA%\ged`, sans toucher au système ni au PATH, crée la base et génère `config.toml`. Il peut être relancé : les étapes faites sont sautées.
+Un script installe tout (uv, Python, PostgreSQL en version zip, fichier de langue OCR) dans `%LOCALAPPDATA%\ged`, sans toucher au système ni au PATH, crée la base et génère `connexion.toml` ; le reste se règle dans l'assistant au premier démarrage (`GED-Poste.ps1 demarrer`). Il peut être relancé : les étapes faites sont sautées.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\outils\installation\Installer-Poste.ps1 `
@@ -133,7 +137,7 @@ Options : `-Port 5433` (si le port 5432 est pris), `-Proxy http://proxy:8080`, `
 git clone <url-du-depot> C:\GED\ged-dsi
 cd C:\GED\ged-dsi
 uv sync
-copy config.exemple.toml config.toml   # puis l'adapter, avec hote = "0.0.0.0"
+uv run ged serveur                     # premier démarrage : assistant d'installation
 ```
 
 ```sql
@@ -142,48 +146,39 @@ CREATE ROLE ged LOGIN PASSWORD 'mot-de-passe-solide';
 CREATE DATABASE ged OWNER ged ENCODING 'UTF8';
 ```
 
-`ged indexer` et `ged serveur` créent ou mettent à jour le schéma à leur démarrage (`ged init-db` le fait seul). Si le rôle `ged` ne peut pas créer les extensions, les créer une fois en superutilisateur.
+L'assistant crée le schéma ; ensuite chaque commande le met à jour à son démarrage (`ged init-db` le fait seul). Si le rôle `ged` ne peut pas créer les extensions, les créer une fois en superutilisateur.
 
 1. **Indexation nocturne** : tâche planifiée exécutée avec le compte de service : `uv run --directory C:\GED\ged-dsi ged indexer`, puis `... ged ocr`.
 2. **Serveur web** permanent : service Windows ([NSSM](https://nssm.cc/), [WinSW](https://github.com/winsw/winsw)) lançant `uv run ged serveur`.
 3. **Pare-feu** : ouvrir le port pour le réseau interne et le VPN.
-4. **Identification** : renseigner `groupes_admin` et vérifier la zone « Intranet local » sur les postes (voir ci-dessous).
+4. **Identification** : vérifier les administrateurs dans la page Réglages et la zone « Intranet local » sur les postes (voir ci-dessous).
 
 > ⚠️ L'interface est servie en HTTP : le cookie de session et les documents circulent en clair. À réserver au réseau interne et au VPN ; pour aller plus loin, placer un proxy HTTPS devant.
 
-## Configuration
+## Installation et réglages
 
-Tout se règle dans `config.toml` (non versionné, modèle commenté : [`config.exemple.toml`](config.exemple.toml)) :
+**Assistant d'installation.** Au premier lancement, `ged serveur` ouvre l'assistant au lieu de la GED : la console affiche une adresse et un **code à usage unique**. L'assistant ne répond qu'au serveur lui-même (`http://localhost:8000`, depuis la VM) et demande ce code : personne d'autre sur le réseau ne peut configurer la GED à votre place.
+1. **Base de données** : serveur, port, base, utilisateur et mot de passe PostgreSQL ; la connexion est testée et le schéma créé.
+2. **Réglages**, préremplis d'après le poste (fichier de langue OCR, LibreOffice, compte Windows courant comme administrateur) : sources à indexer, exclusions, OCR, identification et administrateurs, dépôt, adresse d'écoute ; et l'import de la taxonomie de référence ([`taxonomie.toml`](taxonomie.toml)).
+3. **Terminé** : l'assistant s'arrête et la GED démarre aussitôt, dans le même processus ; la page y emmène d'elle-même.
 
-```toml
-[base]
-url = "postgresql://ged:mot-de-passe@localhost:5432/ged"
+**Où sont les réglages.** Seule la connexion à la base est dans un fichier, `connexion.toml` (non versionné : il contient le mot de passe), écrit par l'assistant dans le dossier de la GED, ou à l'emplacement donné par la variable `GED_CONNEXION`, ou par `ged -c <fichier>`. Il porte aussi l'adresse d'écoute du serveur. Tout le reste est **en base** (table `parametre`) et se modifie dans la page **Réglages** des administrateurs, avec le même formulaire que l'assistant :
+- pris en compte **tout de suite** : sources, exclusions, OCR, LibreOffice, dépôt, exemples de la barre de recherche ; les commandes (`ged indexer`, `ged ocr`…) relisent les réglages à chaque lancement ;
+- pris en compte **au prochain démarrage du serveur** (la page le signale) : identification, protocole, administrateurs, durée des sessions, adresse d'écoute et port.
 
-[ocr]
-active = true
-tessdata = 'C:\GED\tessdata'     # dossier contenant fra.traineddata
+**Commandes du serveur.** Le bouton **? Commandes du serveur** de la page Réglages liste chaque commande `ged`, son but, ce qu'elle fait, quand la lancer et ses options (la même définition que la ligne de commande, `ged <commande> --help`).
 
-[indexation]
-exclure = ['*\Applis\*']         # dossiers non parcourus (chemin complet, * joker, casse ignorée)
-
-[authentification]
-groupes_admin = ['CLINIQUES\GED-Admins']   # voient tous les documents et l'état de l'index
-
-[[sources]]                      # une section par dossier à indexer
-nom = "GED Infra"
-chemin = '\\nas\infra\ged'
-pole = "Infra"
-```
+**Corriger une erreur.** Pour changer de base, ou si des administrateurs mal saisis ne peuvent plus ouvrir la page Réglages : `ged serveur --assistant` depuis le serveur relance l'assistant, prérempli avec les réglages actuels (le mot de passe de la base est gardé s'il est laissé vide).
 
 ### Première mise en route
 
-1. **`ged preparer`** parcourt les sources sans ouvrir aucun fichier (noms, tailles, dates : quelques minutes) et ouvre une page sur http://127.0.0.1:8001 avec l'arborescence. Chaque dossier affiche son nombre de fichiers et de sous-dossiers, coloré selon son poids dans la source, son volume et l'année du fichier le plus récent. Des indices signalent les dossiers à vérifier (nom technique, programmes, sauvegardes, rien de modifié depuis 5 ans, dossier illisible) sans rien décocher d'office. Tout est coché : on décoche ce qu'on ne veut pas indexer, on valide, et les choix sont écrits dans `exclusions.toml` (non versionné, lu en plus de `exclure`). La commande peut être relancée : les choix précédents sont repris.
+1. **`ged preparer`** parcourt les sources sans ouvrir aucun fichier (noms, tailles, dates : quelques minutes) et ouvre une page sur http://127.0.0.1:8001 avec l'arborescence. Chaque dossier affiche son nombre de fichiers et de sous-dossiers, coloré selon son poids dans la source, son volume et l'année du fichier le plus récent. Des indices signalent les dossiers à vérifier (nom technique, programmes, sauvegardes, rien de modifié depuis 5 ans, dossier illisible) sans rien décocher d'office. Tout est coché : on décoche ce qu'on ne veut pas indexer, on valide, et les choix sont enregistrés dans les réglages (en plus des motifs saisis dans la page Réglages, qui y apparaissent verrouillés). La commande peut être relancée : les choix précédents sont repris.
 2. **`ged verifier`** contrôle la base, l'accès aux sources (et à leurs droits de partage), les exclusions, la taxonomie, l'OCR, LibreOffice, le port de l'interface et les groupes d'administration. Il mesure aussi, avec le compte qui lance la GED, la remontée des groupes (noms, hiérarchie dans l'Active Directory, durée), et lit propriétaire et droits d'un échantillon de fichiers par source (200 au plus, 5 par dossier, sans les ouvrir) : propriétaires principaux, fichiers aux droits illisibles (ils seraient masqués), temps de lecture par fichier. Code retour 1 en cas d'erreur.
 3. **`ged indexer`** lance l'indexation complète.
 
 Un dossier exclu sort de l'index au passage suivant de `ged indexer` (et y revient si le motif est retiré) ; son chemin s'affiche dans les filtres actifs quand on clique dessus dans l'arborescence.
 
-**Tags automatiques (taxonomie).** Chaque tag peut avoir des mots-clés (préfixe `titre:` pour un mot qui ne compte que dans le nom ou le titre) ; ils sont **en base** et se modifient dans la page Tags. [`taxonomie.toml`](taxonomie.toml) sert d'import et d'export : il est importé d'office au premier démarrage (`init-db`, `indexer`, `serveur`…), une seule fois ; `ged exporter-taxonomie` (ou le bouton **Exporter** de la page) écrit la taxonomie de la base au même format, pour la sauvegarder, la versionner ou la retravailler ; `ged importer-taxonomie` la remplace par celle du fichier après avoir affiché les différences (les tags absents du fichier perdent leurs mots-clés mais restent), puis recalcule les tags. `ged recalculer` réapplique les règles sans relire les fichiers ; `ged analyser` produit un rapport (dossiers, mots fréquents des noms, couverture des tags) pour la compléter, et [`CLAUDE.md`](CLAUDE.md) décrit la marche à suivre avec Claude Code, si la politique du groupe l'autorise. La liste fournie est un premier jet à compléter avec les pôles.
+**Tags automatiques (taxonomie).** Chaque tag peut avoir des mots-clés (préfixe `titre:` pour un mot qui ne compte que dans le nom ou le titre) ; ils sont **en base** et se modifient dans la page Tags. [`taxonomie.toml`](taxonomie.toml) sert d'import et d'export : l'assistant d'installation propose de l'importer ; `ged exporter-taxonomie` (ou le bouton **Exporter** de la page) écrit la taxonomie de la base au même format, pour la sauvegarder, la versionner ou la retravailler ; `ged importer-taxonomie` la remplace par celle du fichier après avoir affiché les différences (les tags absents du fichier perdent leurs mots-clés mais restent), puis recalcule les tags. `ged recalculer` réapplique les règles sans relire les fichiers ; `ged analyser` produit un rapport (dossiers, mots fréquents des noms, couverture des tags) pour la compléter, et [`CLAUDE.md`](CLAUDE.md) décrit la marche à suivre avec Claude Code, si la politique du groupe l'autorise. La liste fournie est un premier jet à compléter avec les pôles.
 
 **Tags posés à la main.** Sur la fiche d'un document, chacun peut **ajouter** un tag de la liste et retirer (**×**) ceux qu'il a posés ; si la taxonomie ou un dossier donnent aussi ce tag au document, il le garde à ce titre. Les administrateurs de la GED retirent n'importe quel tag, définitivement (la taxonomie ne le remet plus), et après un clic sur un dossier, **Poser sur le dossier** donne un tag à tous ses documents, sous-dossiers compris, y compris ceux qui y arriveront. Un retrait par un administrateur (document ou dossier) demande confirmation et **s'annule** : bouton **Annuler** juste après sur la fiche, ou à tout moment dans le journal ; la pose revient telle qu'elle était (origine, auteur, date). Chacun annule aussi le retrait de ses propres poses. La suppression et la fusion d'un tag, confirmées elles aussi, ne s'annulent pas. Ces choix sont gardés en base, respectés par `ged indexer` et `ged recalculer`, et perdus par `ged reinitialiser` (qui le signale ; les tags et leurs mots-clés, eux, sont gardés).
 
@@ -193,13 +188,7 @@ Un dossier exclu sort de l'index au passage suivant de `ged indexer` (et y revie
 
 ## Droits d'accès et identification
 
-```toml
-[authentification]
-active = true                 # false : pas d'identification, tout le monde voit tout (démo)
-protocole = "NTLM"            # ou "Negotiate" (Kerberos)
-groupes_admin = ['CLINIQUES\GED-Admins']
-duree_session_heures = 8      # un changement de groupe compte à la session suivante
-```
+Réglages (page Réglages, section « Identification et administrateurs ») : identification par la session Windows (désactivée : tout le monde voit tout et règle tout, pour une démonstration), protocole NTLM ou Negotiate (Kerberos), administrateurs (`CLINIQUES\GED-Admins`, un compte ou groupe par ligne), durée des sessions (un changement de groupe compte à la session suivante).
 
 **Identification.** Le serveur demande au navigateur de s'identifier ; Windows vérifie l'identité auprès du contrôleur de domaine et fournit tous les groupes de la personne, imbriqués compris. Un cookie de session (jeton aléatoire, sans nom ni groupe) prend le relais.
 - **Edge et Chrome** envoient la session Windows sans rien demander pour les sites de la zone « Intranet local » : c'est le cas d'un nom court (`http://vm-ged:8000`, `http://localhost:8000`). Pour une adresse IP ou un nom complet, l'ajouter à la zone par GPO (*Liste des attributions de sites aux zones*) ; `127.0.0.1` est redirigé vers `localhost`.
@@ -216,6 +205,26 @@ duree_session_heures = 8      # un changement de groupe compte à la session sui
 
 > **Après la mise à jour d'une installation existante**, lancer `ged indexer` : les fichiers inchangés ne sont pas relus, seuls leurs droits sont enregistrés. D'ici là, les documents restent masqués, sauf aux administrateurs de la GED.
 
+## Dépôt de documents
+
+Réglages (page Réglages) : la case **Dépôt** de chaque source (les seules où la GED écrit ; sans aucune, les pages de dépôt n'existent pas), le dossier d'attente des fichiers déposés pas encore classés (local, hors des sources) et la taille maximale d'un dépôt.
+
+Déposer et classer se font **dans le même geste**, sur la page **Déposer** :
+
+1. **Dépôt** : on glisse un ou plusieurs fichiers. La GED en extrait aussitôt le texte (OCR pour un scan s'il est activé) ; coffres, clés, certificats et programmes sont refusés.
+2. **Propositions**, affichées sous chaque fichier reçu :
+   - **emplacements** : les dossiers des documents les plus **semblables** (mots les plus fréquents du texte et mots du nom, classement plein texte), puis ceux des documents aux mêmes tags, avec en exemple les documents voisins. Seules les sources cochées « Dépôt » sont proposées. « Ailleurs » permet de choisir une autre source et un dossier existant (liste) ou nouveau ;
+   - **tags** de la taxonomie, à cocher ou décocher, et les copies identiques déjà indexées.
+3. **Classement** :
+   - un **administrateur** de la GED classe aussitôt ;
+   - une **autre personne** envoie son choix en validation : les administrateurs le retrouvent, en premier, sur la page **À valider**, le corrigent au besoin, classent ou rejettent (motif montré au déposant). Chacun suit ses envois sur la page Déposer et peut retirer un dépôt tant qu'il n'est pas classé.
+
+Au classement, la GED copie le fichier à l'emplacement choisi, **sans jamais écraser ni modifier** un fichier existant, puis l'indexe tout de suite. Ses droits sont ceux du dossier de destination (héritage NTFS). Un tag proposé puis décoché est retiré pour de bon ; un tag coché en plus est posé à la main. Le dépôt garde la trace de qui a déposé et classé.
+
+**Droits à donner.** Le compte de la GED doit pouvoir **modifier** les dossiers des sources cochées « Dépôt » (et seulement eux) et écrire dans la zone d'attente. Les autres sources restent en lecture seule. Ouvrir un partage existant au dépôt (et pas seulement un dossier dédié) est un choix à faire en connaissance de cause. Sans source cochée « Dépôt », les pages de dépôt n'existent pas.
+
+**Pas encore** : le code documentaire n'est pas proposé (en attente de la règle de la procédure des procédures, phase 3).
+
 ## Utilisation
 
 ```powershell
@@ -224,6 +233,7 @@ uv run ged verifier            # vérifier l'installation avant d'indexer
 uv run ged indexer             # nouveautés seulement (barre de progression, temps restant)
 uv run ged indexer --forcer    # relit tout (le texte OCR des fichiers inchangés est conservé)
 uv run ged ocr [--limite 50]   # scans en attente d'OCR, éventuellement par lots
+uv run ged ocr --reessayer      # relance aussi les OCR en échec (fichier verrouillé, interruption…)
 uv run ged recalculer          # réapplique tags et codes sans relire les fichiers
 uv run ged exporter-taxonomie  # écrit la taxonomie de la base dans taxonomie.toml (--sortie autre.toml)
 uv run ged importer-taxonomie  # remplace la taxonomie par celle du fichier, puis recalcule (--fichier, --oui)
@@ -257,18 +267,19 @@ Les tests SQL (filtrage des droits, tags, taxonomie) tournent en plus sur une ba
 ```
 ged/
 ├── __main__.py      # ligne de commande
-├── config.py        # lecture de config.toml
+├── config.py        # connexion.toml et configuration ; parametres.py : réglages en base, formulaire
 ├── schema.sql       # schéma PostgreSQL (idempotent)
 ├── extraction.py    # texte et métadonnées par format ; ocr.py : OCR
 ├── indexeur.py      # parcours des sources, indexation incrémentale
 ├── taxonomie.py     # tags automatiques, format TOML ; texte.py : normalisation, code documentaire
 ├── taxonomie_base.py # taxonomie en base : import/export, aperçu, recalcul ; recalcul_tags.py : en arrière-plan
 ├── tags_manuels.py  # tags posés à la main, gestion des tags, journal
+├── depot.py         # dépôt de nouveaux documents : analyse, emplacements proposés, classement
 ├── recherche.py     # plein texte, filtres, correction, suggestions ; extraits.py, arborescence.py
 ├── droits.py        # droits NTFS et des partages (pywin32)
 ├── acces.py         # qui peut voir quoi : filtre SQL selon les droits de la personne
 ├── annuaire.py      # hiérarchie des groupes (Active Directory)
-└── web/             # FastAPI, identification Windows (authentification.py), gabarits
+└── web/             # FastAPI, identification Windows (authentification.py), assistant d'installation, gabarits
 outils/              # inventaire, installation sans droits admin, démo et captures
 ```
 
@@ -276,6 +287,6 @@ outils/              # inventaire, installation sans droits admin, démo et capt
 
 - [x] **Phase 0** — Inventaire des partages (script PowerShell)
 - [x] **Phase 1** — Indexation en lecture seule, OCR, recherche web avec filtres et tags automatiques
-- [ ] **Phase 2** — Dépôt de nouveaux documents : dossier « À classer », OCR, proposition de code et de tags, validation humaine, copie dans l'arborescence GED
-- [ ] **Phase 3** — Conformité à la procédure des procédures : modèle `.dotx` à champs, génération des nouvelles notes, contrôle de structure, dates de révision
+- [x] **Phase 2** — Dépôt et classement de nouveaux documents par l'interface : OCR, emplacements et tags proposés, validation par un administrateur pour les autres personnes (proposition de code reportée à la phase 3)
+- [ ] **Phase 3** — Conformité à la procédure des procédures : codification et proposition de code au dépôt, modèle `.dotx` à champs, génération des nouvelles notes, contrôle de structure, dates de révision
 - [ ] **Phase 4** — ~~Identification Windows et filtrage selon les droits NTFS~~ (fait), tags manuels dans l'interface, liens avec la base de connaissances EasyVista, détection des versions, IA (selon la politique du groupe)

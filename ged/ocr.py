@@ -51,6 +51,10 @@ def ocr(
                 with pymupdf.open("pdf", source.convert_to_pdf()) as pdf:
                     pages = _ocr_pages(pdf, tessdata, langue, dpi, suivi)
     except Exception as exc:
+        # Ctrl+C pendant la reconnaissance : MuPDF le transforme en erreur ordinaire. On arrête,
+        # sans rien enregistrer : le document reste en attente d'OCR au lieu de passer en erreur.
+        if "KeyboardInterrupt" in str(exc):
+            raise KeyboardInterrupt from exc
         return Resultat(statut="erreur", methode="ocr", erreur=f"OCR : {type(exc).__name__}: {exc}"[:500])
 
     contenu = "\n".join(p.strip() for p in pages if p.strip())

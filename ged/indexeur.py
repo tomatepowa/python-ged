@@ -212,6 +212,26 @@ class Indexeur:
         bilan["dossiers_inaccessibles"] += len(dossiers_inaccessibles)
         return bilan
 
+    def indexer_un_fichier(self, source: Source, chemin: Path, texte_ocr: Resultat | None = None) -> int:
+        """Indexe un seul fichier (document déposé puis classé, voir ged.depot) : renvoie son id.
+
+        `texte_ocr` : OCR déjà fait au dépôt, repris au lieu de laisser le document en attente d'OCR.
+        """
+        source_id = self._enregistrer_source(source)
+        self._indexer_fichier(source, source_id, chemin, forcer=True)
+        doc = self.conn.execute(
+            "SELECT id, statut, titre, chemin_relatif FROM document WHERE chemin = %s", (str(chemin),)
+        ).fetchone()
+        if texte_ocr and doc["statut"] == "ocr_requis":
+            self.conn.execute(
+                "UPDATE document SET contenu = %s, statut = %s, methode = 'ocr', erreur = %s, "
+                "code_doc = coalesce(code_doc, %s), nb_pages = coalesce(nb_pages, %s) WHERE id = %s",
+                (texte_ocr.contenu.replace("\x00", ""), texte_ocr.statut, texte_ocr.erreur,
+                 texte_ocr.code_doc, texte_ocr.nb_pages, doc["id"]),
+            )
+            self._appliquer_tags(doc["id"], f"{doc['titre'] or ''} {doc['chemin_relatif']}", texte_ocr.contenu)
+        return doc["id"]
+
     def _enregistrer_source(self, source: Source) -> int:
         # Droits du partage réseau : relus à chaque indexation, comme ceux des fichiers
         partage = lire_partage(source.chemin)
@@ -372,15 +392,17 @@ class Indexeur:
     def _vocabulaire(self) -> set[str]:
         return {r["mot"] for r in self.conn.execute("SELECT mot FROM vocabulaire WHERE length(mot) >= 4")}
 
-    def ocr(self, limite: int | None = None) -> Counter:
+    def ocr(self, limite: int | None = None, reessayer: bool = False) -> Counter:
+        """OCR des documents en attente ; `reessayer` : aussi ceux dont l'OCR a échoué."""
         if not self.cfg.tessdata:
-            raise SystemExit("OCR : renseignez [ocr] tessdata dans config.toml.")
+            raise SystemExit("OCR : indiquez le dossier tessdata dans la page Réglages.")
         bilan: Counter = Counter()
         vocabulaire = self._vocabulaire()
         a_traiter = self.conn.execute(
             "SELECT d.id, d.chemin, d.titre, d.chemin_relatif FROM document d "
-            "WHERE d.statut = 'ocr_requis' AND d.supprime_le IS NULL ORDER BY d.modifie_le DESC LIMIT %s",
-            (limite,),
+            "WHERE (d.statut = 'ocr_requis' OR (%s AND d.statut = 'erreur' AND starts_with(d.erreur, 'OCR :'))) "
+            "AND d.supprime_le IS NULL ORDER BY d.modifie_le DESC LIMIT %s",
+            (reessayer, limite),
         ).fetchall()
         log.info("OCR : %d documents à traiter", len(a_traiter))
 

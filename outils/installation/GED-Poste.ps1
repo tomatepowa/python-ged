@@ -7,7 +7,7 @@
     demarrer : démarre PostgreSQL si besoin, puis l'interface web (Ctrl+C pour l'arrêter)
     arreter  : arrête PostgreSQL
     etat     : indique si PostgreSQL tourne
-    indexer  : démarre PostgreSQL si besoin, puis indexe les partages de config.toml
+    indexer  : démarre PostgreSQL si besoin, puis indexe les partages déclarés dans les Réglages
     ocr      : démarre PostgreSQL si besoin, puis passe en OCR les scans en attente
     recalculer : réapplique tags et codes sans relire les fichiers
     analyser : écrit analyse-taxonomie.md (statistiques pour compléter la taxonomie)

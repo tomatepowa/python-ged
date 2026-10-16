@@ -1,0 +1,30 @@
+{% extends "base_assistant.html" %}
+{% block contenu %}
+<h1>Installation de la GED</h1>
+<p class="etapes"><strong>1. Base de données</strong> › 2. Réglages › 3. Terminé</p>
+<p>La GED range son index et ses réglages dans une base PostgreSQL. Indiquez comment s'y connecter : la
+  connexion sera enregistrée dans un petit fichier sur ce serveur, tout le reste en base.</p>
+
+{% if erreur %}<p class="avertissement">{{ erreur }}</p>{% endif %}
+
+{% if not bloque %}
+<form method="post" action="/assistant/connexion" class="formulaire-assistant">
+  <label>Code d'installation <span class="note petit">affiché dans la console où « ged serveur » a été lancé</span>
+    <input type="text" name="code" required autocomplete="off" autofocus placeholder="ABCD-EFGH" class="code-installation"></label>
+  <fieldset class="reglages-section">
+    <legend>PostgreSQL</legend>
+    <div class="reglages-ligne">
+      <label>Serveur <input type="text" name="hote_base" value="{{ saisie.hote_base }}" required></label>
+      <label>Port <input type="number" name="port_base" value="{{ saisie.port_base }}" min="1" max="65535" required></label>
+    </div>
+    <div class="reglages-ligne">
+      <label>Base <input type="text" name="base" value="{{ saisie.base }}" required></label>
+      <label>Utilisateur <input type="text" name="utilisateur" value="{{ saisie.utilisateur }}" required></label>
+    </div>
+    <label>Mot de passe {% if mot_de_passe_connu %}<span class="note petit">laisser vide pour garder celui déjà enregistré</span>{% endif %}
+      <input type="password" name="mot_de_passe" autocomplete="new-password"></label>
+  </fieldset>
+  <button type="submit" class="bouton">Se connecter et continuer</button>
+</form>
+{% endif %}
+{% endblock %}

@@ -195,3 +195,54 @@ CREATE TABLE IF NOT EXISTS reglage (
     cle     text PRIMARY KEY,
     valeur  text NOT NULL
 );
+
+-- Dépôt de nouveaux documents (voir ged/depot.py) : le fichier attend dans la zone d'attente
+-- ([depot] attente) jusqu'à son classement dans l'une des sources ouvertes au dépôt. Sans clé
+-- étrangère vers document : la ligne reste comme trace si le document disparaît.
+CREATE TABLE IF NOT EXISTS depot (
+    id                bigserial PRIMARY KEY,
+    -- Nom du fichier tel que déposé ; le fichier attend sous le nom <id><extension>
+    nom               text NOT NULL,
+    extension         text NOT NULL,
+    taille            bigint NOT NULL,
+    empreinte         text NOT NULL,
+    depose_par        text NOT NULL,
+    depose_par_sid    text,
+    depose_le         timestamptz NOT NULL DEFAULT now(),
+    commentaire       text,
+    -- Analyse : texte extrait (OCR compris), comme pour un document indexé
+    statut_texte      text,
+    methode           text,
+    titre             text,
+    contenu           text,
+    erreur            text,
+    -- Propositions : tags de la taxonomie ; emplacements [{"source", "dossier", "exemples": [...]}]
+    tags_proposes     int[] NOT NULL DEFAULT '{}',
+    emplacements      jsonb NOT NULL DEFAULT '[]',
+    -- Classement demandé par une personne qui n'est pas administratrice : {"nom", "source",
+    -- "dossier", "tags"}, en attente de validation par un administrateur
+    choix             jsonb,
+    envoye_le         timestamptz,
+    -- attente | valide | rejete
+    statut            text NOT NULL DEFAULT 'attente',
+    traite_par        text,
+    traite_le         timestamptz,
+    motif_rejet       text,
+    document_id       bigint,
+    chemin_final      text
+);
+CREATE INDEX IF NOT EXISTS depot_statut_idx ON depot (statut, depose_le DESC);
+-- Colonnes ajoutées après la première version du dépôt (ALTER idempotents)
+ALTER TABLE depot ADD COLUMN IF NOT EXISTS emplacements jsonb NOT NULL DEFAULT '[]';
+ALTER TABLE depot ADD COLUMN IF NOT EXISTS choix jsonb;
+ALTER TABLE depot ADD COLUMN IF NOT EXISTS envoye_le timestamptz;
+
+-- Réglages de la GED (voir ged/parametres.py) : un par clé, valeur en JSON. Remplacent config.toml ;
+-- seule la connexion à la base reste dans un fichier (connexion.toml). installee_le : l'assistant
+-- d'installation a été mené à son terme.
+CREATE TABLE IF NOT EXISTS parametre (
+    cle         text PRIMARY KEY,
+    valeur      jsonb NOT NULL,
+    modifie_par text,
+    modifie_le  timestamptz NOT NULL DEFAULT now()
+);

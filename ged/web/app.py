@@ -2,18 +2,20 @@
 
 Les fichiers des partages sont seulement lus. Seuls les tags posés à la main, leur gestion et la
 taxonomie (mots-clés des tags) par les administrateurs modifient la base depuis l'interface
-(voir ged.tags_manuels et ged.taxonomie_base).
+(voir ged.tags_manuels et ged.taxonomie_base). Le dépôt de documents (ged.depot) écrit dans la
+zone d'attente, puis, après validation, dans la seule source du dépôt.
 """
 
 from __future__ import annotations
 
 import logging
 import mimetypes
+import uuid
 from html import escape
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
-from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.parse import parse_qs, unquote, urlencode, urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
@@ -25,7 +27,8 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from ged import config as configuration
-from ged import documents, tags_manuels, taxonomie_base
+from ged import depot, documents, parametres, tags_manuels, taxonomie_base
+from ged.commandes import aide as aide_des_commandes
 from ged.acces import FiltreAcces, Lecteur, diagnostic_acces, filtre_acces, sids_accordant
 from ged.annuaire import AnnuaireAD, nom_complet_local, organiser_groupes, prefixe_machine
 from ged.arborescence import construire_arbre_resultats, dossier_parent, fil_ariane
@@ -143,11 +146,21 @@ async def formulaire(request: Request, admin: bool = False) -> dict[str, str]:
     """
     if admin and not request.state.lecteur.admin:
         raise HTTPException(403, "Réservé aux administrateurs de la GED")
+    verifier_provenance(request)
+    champs = parse_qs((await request.body()).decode("utf-8"))
+    return {cle: valeurs[0].strip() for cle, valeurs in champs.items()}
+
+
+def verifier_provenance(request: Request) -> None:
+    """Refuse une requête qui modifie quelque chose si elle vient d'une autre page que la GED."""
     provenance = request.headers.get("origin") or request.headers.get("referer") or ""
     if urlsplit(provenance).netloc != request.url.netloc:
         raise HTTPException(403, "Formulaire envoyé depuis une autre page que la GED")
-    champs = parse_qs((await request.body()).decode("utf-8"))
-    return {cle: valeurs[0].strip() for cle, valeurs in champs.items()}
+
+
+def liste_entiers(corps: str, cle: str) -> list[int]:
+    """Valeurs entières d'un champ répété (cases à cocher) d'un formulaire."""
+    return [int(v) for v in parse_qs(corps).get(cle, []) if v.isdigit()]
 
 
 def entier(champs: dict[str, str], cle: str) -> int | None:
@@ -183,12 +196,28 @@ def refus_authentification(request: Request, entete: str | None) -> HTMLResponse
     )
 
 
+class ConfigVivante:
+    """La configuration du serveur, remplacée quand un administrateur enregistre la page Réglages :
+    les requêtes suivantes voient les nouveaux réglages sans redémarrer."""
+
+    def __init__(self, cfg: configuration.Config):
+        object.__setattr__(self, "_cfg", cfg)
+
+    def __getattr__(self, nom: str):
+        return getattr(self._cfg, nom)
+
+    def remplacer(self, cfg: configuration.Config) -> None:
+        object.__setattr__(self, "_cfg", cfg)
+
+
 def creer_app(
     cfg: configuration.Config | None = None, negociateur: Negociateur | None = None, annuaire=None,
+    fichier_connexion: Path | None = None,
 ) -> FastAPI:
     """`negociateur` : vérification des jetons Windows (par défaut SSPI) ; `annuaire` : groupes
-    parents (par défaut l'Active Directory). Remplaçables dans les tests."""
-    cfg = cfg or configuration.charger()
+    parents (par défaut l'Active Directory). Remplaçables dans les tests. `fichier_connexion` :
+    connexion.toml, réécrit si l'adresse d'écoute change dans la page Réglages."""
+    cfg = ConfigVivante(cfg or configuration.charger(fichier_connexion))
     annuaire = annuaire or AnnuaireAD()
 
     def vue_groupes(lecteur: Lecteur):
@@ -199,8 +228,12 @@ def creer_app(
         return organiser_groupes(
             lecteur, lambda sid: graphe.get(sid, []), nom_compte, disponible, prefixe_machine()
         )
-    templates.env.globals["exemples_recherche"] = cfg.exemples_recherche
-    pool = ConnectionPool(cfg.url_base, kwargs={"row_factory": dict_row}, min_size=1, max_size=10, open=False)
+    def globales_des_gabarits() -> None:
+        templates.env.globals["exemples_recherche"] = cfg.exemples_recherche
+        templates.env.globals["depot_actif"] = bool(cfg.sources_depot)
+
+    globales_des_gabarits()
+    pool =ConnectionPool(cfg.url_base, kwargs={"row_factory": dict_row}, min_size=1, max_size=10, open=False)
 
     @asynccontextmanager
     async def cycle_de_vie(app: FastAPI):
@@ -638,6 +671,230 @@ def creer_app(
             "libelle_tag": libelle_tag["nom"] if libelle_tag else None, "limite": tags_manuels.JOURNAL_MAX,
             "message": message, "erreur": erreur,
         })
+
+    # --- Dépôt de nouveaux documents : déposer et classer dans le même geste (ged.depot) -------
+
+    def exiger_depot() -> None:
+        if not cfg.sources_depot:
+            raise HTTPException(404, "Dépôt de documents désactivé ([depot] sources dans la configuration)")
+
+    def contexte_classement(conn, depots: list[dict]) -> dict:
+        """De quoi afficher le formulaire de classement de ces dépôts (gabarit _classement.html)."""
+        tags = tags_manuels.tous_les_tags(conn)
+        for d in depots:
+            d["options"] = depot.options_emplacement(d)
+            choix = d["choix"] or {}
+            d["nom_choisi"] = choix.get("nom") or d["nom"]
+            d["tags_choisis"] = choix["tags"] if "tags" in choix else d["tags_proposes"]
+        return {
+            "tags": tags, "libelles": {t["id"]: t for t in tags},
+            "sources_depot": cfg.sources_du_depot(), "dossiers": depot.dossiers_des_sources(conn, cfg),
+        }
+
+    @app.get("/depot", response_class=HTMLResponse)
+    def page_depot(request: Request, message: str = "", erreur: str = "", document: int | None = None):
+        exiger_depot()
+        lecteur: Lecteur = request.state.lecteur
+        with pool.connection() as conn:
+            a_classer = depot.a_classer_par(conn, lecteur)
+            contexte = contexte_classement(conn, a_classer)
+            mes_depots = depot.de_la_personne(conn, lecteur)
+            nb_envoyes = depot.nb_envoyes(conn) if lecteur.admin else 0
+        return templates.TemplateResponse(request, "depot.html", {
+            **contexte, "a_classer": a_classer, "mes_depots": mes_depots, "nb_envoyes": nb_envoyes,
+            "taille_max_mo": cfg.taille_max_depot_mo, "message": message, "erreur": erreur,
+            "document_classe": document, "retour": "/depot",
+        })
+
+    @app.post("/depot")
+    async def recevoir_depot(request: Request):
+        """Reçoit un fichier envoyé par la page Déposer : le corps de la requête est le fichier,
+        son nom et le commentaire sont dans les en-têtes (encodés comme une URL)."""
+        exiger_depot()
+        verifier_provenance(request)
+        nom = unquote(request.headers.get("x-nom-fichier", ""))
+        commentaire = unquote(request.headers.get("x-commentaire", ""))
+        limite = cfg.taille_max_depot_mo * 1024 * 1024
+        trop_gros = f"Fichier de plus de {cfg.taille_max_depot_mo} Mo."
+        if int(request.headers.get("content-length") or 0) > limite:
+            return Response(trop_gros, status_code=413)
+        cfg.attente_depot.mkdir(parents=True, exist_ok=True)
+        recu = cfg.attente_depot / f"reception-{uuid.uuid4().hex}.part"
+        try:
+            taille = 0
+            with recu.open("wb") as f:
+                async for bloc in request.stream():
+                    taille += len(bloc)
+                    if taille > limite:
+                        raise depot.DepotRefuse(trop_gros)
+                    f.write(bloc)
+
+            def enregistrer() -> int:
+                with pool.connection() as conn:
+                    return depot.enregistrer(conn, cfg, recu, nom, request.state.lecteur, commentaire)
+
+            depot_id = await run_in_threadpool(enregistrer)
+        except depot.DepotRefuse as exc:
+            return Response(str(exc), status_code=400)
+        finally:
+            # Renommé <id><extension> une fois enregistré : il ne reste que si la réception a échoué
+            recu.unlink(missing_ok=True)
+        log.info("Dépôt %d : %s par %s", depot_id, nom, request.state.lecteur.compte or "?")
+        return {"id": depot_id}
+
+    @app.get("/depot/{depot_id}/fichier")
+    def fichier_depose(request: Request, depot_id: int):
+        """Fichier pas encore classé : pour les administrateurs et la personne qui l'a déposé."""
+        exiger_depot()
+        lecteur: Lecteur = request.state.lecteur
+        with pool.connection() as conn:
+            ligne = depot.depot(conn, depot_id)
+        if not ligne or not (lecteur.admin or depot.est_a_lui(ligne, lecteur)):
+            raise HTTPException(404, "Dépôt inconnu")
+        chemin = depot.fichier_en_attente(cfg, ligne)
+        if ligne["statut"] != "attente" or not chemin.is_file():
+            raise HTTPException(410, "Ce dépôt n'est plus en attente")
+        type_mime = mimetypes.guess_type(ligne["nom"])[0] or "application/octet-stream"
+        disposition = "inline" if ligne["extension"] in AFFICHABLES else "attachment"
+        return FileResponse(chemin, media_type=type_mime, filename=ligne["nom"], content_disposition_type=disposition)
+
+    def page_de_retour(champs: dict[str, str]) -> str:
+        retour = champs.get("retour", "/depot")
+        return retour if retour in ("/depot", "/admin/depots") else "/depot"
+
+    @app.post("/depot/{depot_id}/classer")
+    async def classer_depot(request: Request, depot_id: int):
+        """Classe le dépôt (administrateur) ou envoie ce classement en validation (autre personne)."""
+        exiger_depot()
+        champs = await formulaire(request)
+        corps = (await request.body()).decode("utf-8")
+        lecteur: Lecteur = request.state.lecteur
+        retour = page_de_retour(champs)
+
+        def appliquer() -> int | None:
+            with pool.connection() as conn:
+                ligne = depot.depot(conn, depot_id)
+                if not ligne or not (lecteur.admin or depot.est_a_lui(ligne, lecteur)):
+                    raise HTTPException(404, "Dépôt inconnu")
+                # Un emplacement proposé (par son rang), ou un autre choisi à la main
+                options = depot.options_emplacement(ligne)
+                rang = entier(champs, "emplacement")
+                if rang is not None and rang < len(options):
+                    source, dossier = options[rang]["source"], options[rang]["dossier"]
+                else:
+                    source, dossier = champs.get("source", ""), champs.get("dossier", "")
+                return depot.classer(conn, cfg, depot_id, lecteur, champs.get("nom", ""), source, dossier,
+                                     liste_entiers(corps, "tag"))
+
+        try:
+            document_id = await run_in_threadpool(appliquer)
+        except (depot.DepotRefuse, tags_manuels.TagInvalide) as exc:
+            return RedirectResponse(avec_message(f"{retour}#depot-{depot_id}", "erreur", str(exc)), status_code=303)
+        except OSError as exc:
+            log.exception("Classement du dépôt %d impossible", depot_id)
+            return RedirectResponse(avec_message(f"{retour}#depot-{depot_id}", "erreur", f"Copie impossible : {exc}"),
+                                    status_code=303)
+        if document_id is None:
+            return RedirectResponse(avec_message(retour, "message", "Envoyé : un administrateur de la GED va le valider."),
+                                    status_code=303)
+        return RedirectResponse(avec_message(f"{retour}?document={document_id}", "message", "Document classé."),
+                                status_code=303)
+
+    @app.post("/depot/{depot_id}/retirer")
+    async def retirer_depot(request: Request, depot_id: int):
+        """La personne qui a déposé retire son dépôt, ou un administrateur le rejette (motif facultatif)."""
+        exiger_depot()
+        champs = await formulaire(request)
+        retour = page_de_retour(champs)
+        lecteur: Lecteur = request.state.lecteur
+
+        def appliquer() -> None:
+            with pool.connection() as conn:
+                ligne = depot.depot(conn, depot_id)
+                a_lui = bool(ligne) and depot.est_a_lui(ligne, lecteur)
+                motif = "Retiré par la personne qui l'a déposé" if a_lui else champs.get("motif", "")
+                depot.rejeter(conn, cfg, depot_id, lecteur, motif)
+
+        try:
+            await run_in_threadpool(appliquer)
+        except depot.DepotRefuse as exc:
+            return RedirectResponse(avec_message(retour, "erreur", str(exc)), status_code=303)
+        return RedirectResponse(avec_message(retour, "message", "Dépôt retiré."), status_code=303)
+
+    @app.get("/admin/depots", response_class=HTMLResponse)
+    def admin_depots(request: Request, message: str = "", erreur: str = "", document: int | None = None):
+        """Dépôts envoyés en validation par des personnes qui ne sont pas administratrices."""
+        exiger_depot()
+        exiger_admin(request)
+        with pool.connection() as conn:
+            a_valider = depot.envoyes(conn)
+            contexte = contexte_classement(conn, a_valider)
+            historique = depot.traites(conn)
+        return templates.TemplateResponse(request, "admin_depots.html", {
+            **contexte, "a_valider": a_valider, "historique": historique,
+            "message": message, "erreur": erreur, "document_classe": document, "retour": "/admin/depots",
+        })
+
+    # --- Réglages (administrateurs) ----------------------------------------------------------------
+
+    def page_reglages(request: Request, formulaire: parametres.Formulaire | None = None, message: str = "",
+                      statut: int = 200):
+        with pool.connection() as conn:
+            valeurs = parametres.lire(conn)
+        return templates.TemplateResponse(request, "admin_reglages.html", {
+            "v": formulaire.valeurs if formulaire else valeurs,
+            "hote": formulaire.hote if formulaire else cfg.hote,
+            "port": formulaire.port if formulaire else cfg.port,
+            "erreurs": formulaire.erreurs if formulaire else [], "assistant": False,
+            "nb_prepares": len(valeurs["exclure_prepares"]), "message": message,
+            "avertissements": request.query_params.getlist("avertissement"),
+        }, status_code=statut)
+
+    @app.get("/admin/reglages", response_class=HTMLResponse)
+    def admin_reglages(request: Request, message: str = ""):
+        exiger_admin(request)
+        return page_reglages(request, message=message)
+
+    @app.post("/admin/reglages", response_class=HTMLResponse)
+    async def admin_reglages_enregistrer(request: Request):
+        exiger_admin(request)
+        verifier_provenance(request)
+        champs = parse_qs((await request.body()).decode("utf-8"), keep_blank_values=True)
+        lecteur: Lecteur = request.state.lecteur
+
+        def enregistrer() -> parametres.Formulaire | list[str]:
+            with pool.connection() as conn:
+                formulaire = parametres.lire_formulaire(champs, parametres.lire(conn))
+                if formulaire.erreurs:
+                    return formulaire
+                modifies = parametres.ecrire(conn, formulaire.valeurs, tags_manuels.auteur(lecteur))
+                valeurs = parametres.lire(conn)
+            # Pris en compte tout de suite, sauf ce qui n'est lu qu'au démarrage
+            connexion = configuration.Connexion(cfg.url_base, cfg.hote, cfg.port)
+            cfg.remplacer(parametres.config(connexion, valeurs))
+            globales_des_gabarits()
+            au_demarrage = [parametres.AU_DEMARRAGE[cle] for cle in modifies if cle in parametres.AU_DEMARRAGE]
+            if (formulaire.hote, formulaire.port) != (cfg.hote, cfg.port):
+                configuration.ecrire_connexion(
+                    configuration.Connexion(cfg.url_base, formulaire.hote, formulaire.port), fichier_connexion)
+                au_demarrage.append("adresse d'écoute")
+            return [*formulaire.avertissements, *(
+                [f"Pris en compte au prochain démarrage du serveur : {', '.join(au_demarrage)}."] if au_demarrage else []
+            )]
+
+        resultat = await run_in_threadpool(enregistrer)
+        if isinstance(resultat, parametres.Formulaire):
+            return page_reglages(request, resultat, statut=400)
+        return RedirectResponse(
+            "/admin/reglages?" + urlencode([("message", "Réglages enregistrés."), *(("avertissement", a) for a in resultat)]),
+            status_code=303,
+        )
+
+    @app.get("/admin/commandes", response_class=HTMLResponse)
+    def admin_commandes(request: Request):
+        """Aide des commandes à lancer sur le serveur (même définition que la ligne de commande)."""
+        exiger_admin(request)
+        return templates.TemplateResponse(request, "admin_commandes.html", {"aide": aide_des_commandes()})
 
     @app.get("/stats", response_class=HTMLResponse)
     def stats(request: Request):

@@ -48,7 +48,7 @@ def verifier_sources(cfg: Config) -> list[Verification]:
     from ged.droits import lire_partage
 
     if not cfg.sources:
-        return [Verification("Sources", ERREUR, "aucune section [[sources]] dans config.toml")]
+        return [Verification("Sources", ERREUR, "aucune source à indexer (page Réglages)")]
     resultats = []
     for source in cfg.sources:
         sujet = f"Source « {source.nom} »"
@@ -81,25 +81,21 @@ def verifier_sources(cfg: Config) -> list[Verification]:
 
 
 def verifier_exclusions(cfg: Config) -> Verification:
-    nb_config, nb_total = len(cfg.exclure_config), len(cfg.exclure)
-    motifs_config = f"{nb_config} motif{'s' if nb_config > 1 else ''} dans config.toml"
-    if not cfg.fichier_exclusions.is_file():
+    nb_manuels, nb_prepares = len(cfg.exclure_manuels), len(cfg.exclure_prepares)
+    manuels = f"{nb_manuels} motif{'s' if nb_manuels > 1 else ''} dans la page Réglages"
+    if not nb_prepares:
         return Verification(
             "Exclusions", ATTENTION,
-            f"{cfg.fichier_exclusions.name} absent : lancez « ged preparer » pour choisir les dossiers à indexer"
-            + (f" ({motifs_config})" if nb_config else ""),
+            "aucun dossier exclu avec « ged preparer » : lancez-le pour choisir les dossiers à indexer"
+            + (f" ({manuels})" if nb_manuels else ""),
         )
-    return Verification(
-        "Exclusions", OK,
-        f"{nb_total - nb_config} dossier(s) exclu(s) dans {cfg.fichier_exclusions.name}, {motifs_config}",
-    )
+    return Verification("Exclusions", OK, f"{nb_prepares} dossier(s) exclu(s) avec « ged preparer », {manuels}")
 
 
 def verifier_taxonomie(cfg: Config) -> Verification:
-    """La taxonomie vit en base ; taxonomie.toml n'est importé qu'au premier démarrage."""
+    """La taxonomie vit en base (importée par l'assistant, ou « ged importer-taxonomie »)."""
     import psycopg
 
-    from ged.taxonomie import lire_toml
 
     try:
         with psycopg.connect(cfg.url_base, connect_timeout=5) as conn:
@@ -112,14 +108,10 @@ def verifier_taxonomie(cfg: Config) -> Verification:
                 return Verification("Taxonomie", OK, f"{nb} tags avec des mots-clés (en base, page Tags)")
     except psycopg.Error:
         pass  # base injoignable : signalé par la vérification de la base
-    if not cfg.taxonomie.is_file():
-        return Verification("Taxonomie", ATTENTION, f"{cfg.taxonomie} absent : aucun tag ne sera posé")
-    try:
-        definition = lire_toml(cfg.taxonomie.read_text(encoding="utf-8"))
-    except (ValueError, OSError) as exc:
-        return Verification("Taxonomie", ERREUR, f"{cfg.taxonomie.name} illisible : {exc}")
-    nb = sum(1 for mots in definition.mots.values() if mots)
-    return Verification("Taxonomie", OK, f"{cfg.taxonomie.name} : {nb} tags, importés au premier démarrage")
+    return Verification(
+        "Taxonomie", ATTENTION,
+        "aucune taxonomie en base : aucun tag ne sera posé (page Tags, ou « ged importer-taxonomie »)",
+    )
 
 
 def verifier_outils(cfg: Config) -> list[Verification]:
@@ -166,7 +158,7 @@ def verifier_authentification(cfg: Config) -> list[Verification]:
     resultats = [Verification("Identification", OK, f"session Windows, protocole {cfg.protocole}")]
     if not cfg.groupes_admin:
         resultats.append(Verification(
-            "Administrateurs", ATTENTION, "aucun groupe dans groupes_admin : personne ne verra la page État de l'index",
+            "Administrateurs", ATTENTION, "aucun administrateur : personne ne pourra régler la GED (ged serveur --assistant)",
         ))
     for nom in cfg.groupes_admin:
         if nom.upper().startswith("S-1-"):

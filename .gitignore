@@ -7,10 +7,13 @@ __pycache__/
 dist/
 build/
 
-# Configuration locale (contient le mot de passe de la base)
+# Connexion à la base écrite par l'assistant (contient le mot de passe de la base)
+connexion*.toml
+# Anciens fichiers de configuration (avant les réglages en base)
 config.toml
-# Dossiers exclus choisis avec « ged preparer » (chemins internes)
 exclusions.toml
+# Fichiers déposés en attente de classement
+depot/
 
 # Résultats de l'outil d'inventaire (contiennent des chemins internes)
 inventaire_*/

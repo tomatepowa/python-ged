@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block titre %}Commandes du serveur – GED DSI{% endblock %}
+
+{% block contenu %}
+<h1>Commandes du serveur</h1>
+<p class="note"><a href="/admin/reglages">← Réglages</a> · ce qui ne se fait pas dans l'interface se lance sur le serveur,
+  dans une console ouverte dans le dossier de la GED.</p>
+
+<section class="fiche aide-commandes">
+  <h2>Lancer une commande</h2>
+  <pre class="commande">uv run ged &lt;commande&gt; [options]</pre>
+  <p>Sur un poste installé avec <code>Installer-Poste.ps1</code>, le script <code>.\outils\installation\GED-Poste.ps1 &lt;commande&gt;</code>
+    démarre PostgreSQL si besoin, puis lance la commande. <code>uv run ged &lt;commande&gt; --help</code> affiche cette aide dans la console.</p>
+  <p>Options communes, à placer avant la commande :</p>
+  <table>
+    <tbody>
+    {% for o in aide.options %}<tr><td class="chemin">{{ o.noms }}</td><td>{{ o.aide }}</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  <p class="note petit">En production : <code>ged serveur</code> en service Windows, et une tâche planifiée la nuit pour
+    <code>ged indexer</code> puis <code>ged ocr</code>, avec le compte de service.</p>
+</section>
+
+<nav class="sommaire-commandes">
+  {% for c in aide.commandes %}<a href="#commande-{{ c.nom }}" class="badge code">{{ c.nom }}</a>{% endfor %}
+</nav>
+
+{% for c in aide.commandes %}
+<section class="fiche aide-commandes" id="commande-{{ c.nom }}">
+  <h2><code>ged {{ c.nom }}</code></h2>
+  <p><strong>{{ c.but[:1] | upper }}{{ c.but[1:] }}.</strong></p>
+  <p>{{ c.detail }}</p>
+  {% if c.options %}
+  <table>
+    <thead><tr><th>Option</th><th>Effet</th></tr></thead>
+    <tbody>
+    {% for o in c.options %}<tr><td class="chemin">{{ o.noms }}</td><td>{{ o.aide }}</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+{% endfor %}
+{% endblock %}

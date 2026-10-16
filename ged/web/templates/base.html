@@ -12,7 +12,8 @@
     <a class="logo" href="/">GED <span>DSI</span></a>
     <nav>
       <a href="/">Recherche</a>
-      {% if request.state.lecteur.admin %}<a href="/admin/tags">Tags</a><a href="/stats">État de l'index</a>{% endif %}
+      {% if depot_actif %}<a href="/depot">Déposer</a>{% if request.state.lecteur.admin %}<a href="/admin/depots">À valider</a>{% endif %}{% endif %}
+      {% if request.state.lecteur.admin %}<a href="/admin/tags">Tags</a><a href="/stats">État de l'index</a><a href="/admin/reglages">Réglages</a>{% endif %}
     </nav>
     {% if request.state.lecteur.compte %}<a class="compte" href="/moi" title="Documents affichés selon vos droits Windows : voir vos groupes">{{ request.state.lecteur.compte }}{% if request.state.lecteur.admin %} · admin{% endif %}</a>{% endif %}
   </header>

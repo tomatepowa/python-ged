@@ -1,0 +1,22 @@
+{% extends "base_assistant.html" %}
+{% block contenu %}
+<h1>Installation de la GED</h1>
+<p class="etapes">1. Base de données › <strong>2. Réglages</strong> › 3. Terminé</p>
+<p>{% if deja %}Réglages actuels de la GED : corrigez ce qu'il faut.{% else %}Valeurs proposées d'après ce
+  poste : complétez au moins les sources à indexer.{% endif %} Tout reste modifiable ensuite dans la page
+  <strong>Réglages</strong> de l'interface.</p>
+
+{% for e in erreurs %}<p class="avertissement">{{ e }}</p>{% endfor %}
+
+<form method="post" action="/assistant/reglages" class="formulaire-assistant">
+  {% include "_reglages.html" %}
+  {% if proposer_taxonomie %}
+  <fieldset class="reglages-section">
+    <legend>Tags</legend>
+    <label class="case"><input type="checkbox" name="importer_taxonomie" value="1" checked>
+      Importer la taxonomie de référence (<code>{{ taxonomie.name }}</code>) : tags posés automatiquement d'après des mots-clés</label>
+  </fieldset>
+  {% endif %}
+  <button type="submit" class="bouton">Enregistrer et démarrer la GED</button>
+</form>
+{% endblock %}

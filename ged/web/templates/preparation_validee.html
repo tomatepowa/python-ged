@@ -1,9 +1,9 @@
 {% extends "base_preparation.html" %}
 {% block contenu %}
 <h1>Exclusions enregistrées</h1>
-<p><code>{{ fichier }}</code> est à jour :
-{{ exclus | length }} dossier{{ "s" if exclus | length > 1 }} exclu{{ "s" if exclus | length > 1 }}{% if nb_config %}
-(plus {{ nb_config }} motif{{ "s" if nb_config > 1 }} de config.toml){% endif %} :
+<p>Réglages de la GED à jour :
+{{ exclus | length }} dossier{{ "s" if exclus | length > 1 }} exclu{{ "s" if exclus | length > 1 }}{% if nb_manuels %}
+(plus {{ nb_manuels }} motif{{ "s" if nb_manuels > 1 }} de la page Réglages){% endif %} :
 <strong>{{ indexes | nombre }} fichier{{ "s" if indexes > 1 }} à indexer</strong> sur {{ total | nombre }}.</p>
 
 {% if exclus %}
@@ -17,7 +17,7 @@
 </table>
 {% endif %}
 {% if conserves %}
-<p class="note">Gardés de l'ancien fichier, car ils ne visent aucun dossier parcouru :
+<p class="note">Gardés des choix précédents, car ils ne visent aucun dossier parcouru :
 {% for m in conserves %}<code>{{ m }}</code>{{ ", " if not loop.last }}{% endfor %}.</p>
 {% endif %}
 

@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block titre %}Déposer un document – GED DSI{% endblock %}
+
+{% block contenu %}
+<h1>Déposer un document</h1>
+<p class="note">La GED lit le document, propose un emplacement et des tags ; vous vérifiez, puis le document est
+  classé et devient trouvable par la recherche.{% if not request.state.lecteur.admin %} Un administrateur de la GED
+  valide d'abord votre classement.{% endif %}
+  {% if request.state.lecteur.admin and nb_envoyes %}<a href="/admin/depots">{{ nb_envoyes }} dépôt{{ "s" if nb_envoyes > 1 }} à valider</a>{% endif %}</p>
+
+{% if message %}<p class="confirmation">{{ message }}{% if document_classe %} <a href="/document/{{ document_classe }}">Voir la fiche</a>{% endif %}</p>{% endif %}
+{% if erreur %}<p class="avertissement">{{ erreur }}</p>{% endif %}
+
+<form id="depot" class="depot">
+  <label class="zone-depot" id="zone">
+    <input type="file" id="fichiers" multiple>
+    <strong>Choisir des fichiers</strong> ou les glisser ici
+    <span class="note petit">{{ taille_max_mo }} Mo au plus par fichier</span>
+  </label>
+  {% if not request.state.lecteur.admin %}
+  <label class="commentaire-depot">Commentaire pour l'administrateur (facultatif)
+    <textarea id="commentaire" rows="2" maxlength="1000" placeholder="Document qu'il remplace, précision sur le classement…"></textarea>
+  </label>
+  {% endif %}
+  <ul id="envois" class="envois"></ul>
+  <button type="submit" class="bouton" id="envoyer" disabled>Déposer</button>
+</form>
+
+{% if a_classer %}
+<h2 id="a-classer">À classer</h2>
+{% for d in a_classer %}{% include "_classement.html" %}{% endfor %}
+{% include "_outils_classement.html" %}
+{% endif %}
+
+{% if mes_depots %}
+<h2>Mes dépôts</h2>
+<table>
+  <thead><tr><th>Date</th><th>Fichier</th><th>État</th></tr></thead>
+  <tbody>
+  {% for d in mes_depots %}
+    <tr>
+      <td class="nombre">{{ d.depose_le.astimezone().strftime("%d/%m/%Y %H:%M") }}</td>
+      <td class="chemin">{% if d.statut == "valide" and d.document_id %}<a href="/document/{{ d.document_id }}">{{ d.source }} › {{ d.chemin_relatif | replace("\\", " › ") }}</a>{% else %}{{ d.nom }}{% endif %}</td>
+      <td>
+        {% if d.statut == "attente" %}<span class="badge alerte">En attente de validation</span>
+          {% if d.choix %}<span class="note petit">vers {{ d.choix.source }}{% if d.choix.dossier %} › {{ d.choix.dossier }}{% endif %}</span>{% endif %}
+        {% elif d.statut == "valide" %}<span class="badge code">Classé</span>
+        {% else %}<span class="badge">{{ "Retiré" if d.motif_rejet and d.motif_rejet.startswith("Retiré") else "Rejeté" }}</span>
+          <span class="note petit">{{ d.traite_par }}{% if d.motif_rejet %} : {{ d.motif_rejet }}{% endif %}</span>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<script>
+(() => {
+  const champ = document.getElementById('fichiers');
+  const zone = document.getElementById('zone');
+  const liste = document.getElementById('envois');
+  const bouton = document.getElementById('envoyer');
+  let choisis = [];
+
+  function afficher() {
+    liste.replaceChildren(...choisis.map((f) => {
+      const li = document.createElement('li');
+      li.textContent = f.name;
+      const etat = document.createElement('span');
+      etat.className = 'note petit';
+      etat.textContent = ` ${(f.size / 1048576).toFixed(1).replace('.', ',')} Mo`;
+      li.append(etat);
+      f.ligne = etat;
+      return li;
+    }));
+    bouton.disabled = !choisis.length;
+  }
+  champ.addEventListener('change', () => { choisis = [...champ.files]; afficher(); });
+  ['dragenter', 'dragover'].forEach((e) => zone.addEventListener(e, (ev) => { ev.preventDefault(); zone.classList.add('survol'); }));
+  ['dragleave', 'drop'].forEach((e) => zone.addEventListener(e, () => zone.classList.remove('survol')));
+  zone.addEventListener('drop', (ev) => { ev.preventDefault(); choisis = [...ev.dataTransfer.files]; afficher(); });
+
+  // Un fichier à la fois : le corps de la requête est le fichier lui-même
+  function envoyer(fichier, commentaire) {
+    return new Promise((resolu) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/depot');
+      xhr.setRequestHeader('X-Nom-Fichier', encodeURIComponent(fichier.name));
+      xhr.setRequestHeader('X-Commentaire', encodeURIComponent(commentaire));
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) fichier.ligne.textContent = ` envoi… ${Math.round(100 * e.loaded / e.total)} %`;
+      };
+      xhr.upload.onload = () => { fichier.ligne.textContent = ' analyse…'; };
+      xhr.onload = () => {
+        const ok = xhr.status === 200;
+        fichier.ligne.textContent = ok ? ' reçu ✓' : ` refusé : ${xhr.responseText}`;
+        fichier.ligne.className = ok ? 'note petit' : 'avertissement petit';
+        resolu(ok);
+      };
+      xhr.onerror = () => { fichier.ligne.textContent = ' échec de l\'envoi'; resolu(false); };
+      xhr.send(fichier);
+    });
+  }
+
+  document.getElementById('depot').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    bouton.disabled = true;
+    const commentaire = document.getElementById('commentaire')?.value || '';
+    let tousOk = true;
+    for (const f of choisis) tousOk = (await envoyer(f, commentaire)) && tousOk;
+    // Les documents reçus apparaissent à classer, avec leurs propositions
+    if (tousOk) window.location = '/depot?recus=' + choisis.length + '#a-classer';
+  });
+})();
+</script>
+{% endblock %}
